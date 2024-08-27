@@ -1,0 +1,30 @@
+---
+- hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Create variable file on Linux hosts
+      template:
+        src: templates/variables_template.j2
+        dest: "{{ path_job }}variables_info.txt"
+      when: ansible_connection != 'winrm'
+
+    - name: Create variable file on Windows hosts
+      win_template:
+        src: templates/variables_template.j2
+        dest: "{{ path_job | replace('/', '\\') }}variables_info.txt"
+      when: ansible_connection == 'winrm'
+
+
+#  - name: Install Batchjobs on crontab
+#    cron:
+#      name: "Manage Disk Space"
+#      minute: "30"
+#      hour: "02"
+#      weekday: "0-6"
+#      job: "home/export/manageDiskSpace.sh > home/export/manageDiskSpace.sh.log 2>&1"
+#      #user: "admin"
+#      disabled: "no"
+#    become_user: "{{ admin_user }}"
+#    tags:
+#      - cronjobs

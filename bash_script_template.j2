@@ -1,0 +1,6 @@
+#!/bin/bash
+
+{% for key, value in configs.items() %}
+echo "Setting {{ key }} to {{ value }}"
+export {{ key }}="{{ value }}"
+{% endfor %}

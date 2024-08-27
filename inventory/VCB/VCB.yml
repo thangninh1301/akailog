@@ -1,0 +1,44 @@
+all:
+  hosts:
+    DR:
+      ansible_user: root
+      ansible_host: 192.168.10.10
+      path_job: /tmp/
+      time_to_run: "5 * * * *"
+      leader_PIC: thangnd18
+      job_name: h2h-clean
+      service:
+        - name: apache
+          path: /tmp/pathlog/apache
+          retention_rate:   3      #days
+          log_extension:
+        - name: vcbmoney
+          path: /tmp/pathlog/vcb
+          retention_rate:   3      #days
+          log_extension:
+        - name: vcbmoney
+          path: /tmp/pathlog/vcb
+          retention_rate:   3      #days
+          log_extension:
+    DC:
+      ansible_connection: winrm
+      ansible_winrm_transport: basic
+      ansible_user: root
+      ansible_host: 192.168.10.10
+      path_job: /tmp/
+      time_to_run: "5 * * * *"
+      leader_PIC: thangnd18
+      job_name: h2h-clean
+      service:
+        - name: apache
+          path: /tmp/pathlog/apache
+          retention_rate:   3      #days
+          log_extension:
+        - name: vcbmoney
+          path: /tmp/pathlog/vcb
+          retention_rate:   3      #days
+          log_extension:
+        - name: vcbmoney
+          path: /tmp/pathlog/vcb
+          retention_rate:   3      #days
+          log_extension:
