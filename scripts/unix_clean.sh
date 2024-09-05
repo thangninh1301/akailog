@@ -23,6 +23,9 @@ while getopts "d:e:r:o:" opt; do
     o)
       result_file_path=${OPTARG}
       ;;
+    k)
+      result_file_path=${OPTARG}
+      ;;
     *)
       usage
       ;;
@@ -75,6 +78,8 @@ done
 
 log_post_size=$(find "${log_dir}" -type f -name "*${log_extension}" -print0 | xargs -0 du -sb | awk '{sum+=$1} END {print sum}')
 
+# zip, delete
+#
 
 # Calculate post-cleaning size
 post_size=$(du -sh "${log_dir}" | cut -f1)
