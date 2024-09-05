@@ -1,9 +1,8 @@
 #!/bin/bash
 
 # Functions
-
 usage() {
-    echo "Usage: $0 -s <source_path> -k <log_history> -b <backup_path> -h <backup_retention> -w <work_dir> -z <zip_name> -l <log_path> -r <log_retention> -S <smtp_server> -p <smtp_port> -u <smtp_user> -P <smtp_pwd> -t <mail_to> -f <mail_from> -j <mail_subject> [-c] [-z] [-n] [-H] -e <log_extension>"
+    echo "Usage: $0 -s <source_path> -k <log_history> -b <backup_path> -h <backup_retention> -w <work_dir> -z <zip_name> -l <log_path> -r <log_retention> [-c] [-z] [-n] [-H] -e <log_extension>"
     echo "Options:"
     echo "  -s  Path to logs"
     echo "  -k  Number of days to keep logs"
@@ -16,6 +15,7 @@ usage() {
     echo "  -e  Log file extension to calculate sizes"
     echo "  -c  Compress logs"
     echo "  -H  Show help"
+    echo "  -p  Result file path"
 }
 
 # Default values
@@ -23,9 +23,11 @@ log_history=0
 backup_retention=0
 compress=false
 log_extension=""
+result_file_path=""
+log_path=""
 
 # Parse command-line arguments
-while getopts "s:k:b:h:w:z:l:r:e:S:p:u:P:t:f:j:cznH" opt; do
+while getopts "s:k:b:h:w:z:l:r:e:p:S:j:cznH" opt; do
     case $opt in
         s) source_path="$OPTARG" ;;
         k) log_history="$OPTARG" ;;
@@ -35,12 +37,14 @@ while getopts "s:k:b:h:w:z:l:r:e:S:p:u:P:t:f:j:cznH" opt; do
         z) zip_name="$OPTARG" ;;
         l) log_path="$OPTARG" ;;
         r) log_retention="$OPTARG" ;;
-        e) log_extension="$OPTARG" ;;  # Log extension to filter files
+        e) log_extension="$OPTARG" ;;
+        p) result_file_path="$OPTARG" ;;
         H) usage; exit 0 ;;
         *) usage; exit 1 ;;
     esac
 done
 
+# Log function
 log() {
     local type="$1"
     local msg="$2"
@@ -55,7 +59,7 @@ calculate_size() {
     find "$folder" -type f -name "*${extension}" -exec du -ch {} + | grep total$ | cut -f1
 }
 
-# Compress logs
+# Compress logs function
 compress_logs() {
     log "INFO" "Compressing using gzip"
     tar -czf "$work_dir/$zip_name-$(date +'%Y-%m-%d_%H-%M-%S').tar.gz" -C "$work_dir" "$zip_name"
@@ -102,5 +106,11 @@ if [ -n "$log_retention" ]; then
     log "INFO" "Cleaning all logs older than $log_retention days"
     find "$log_path" -type f -mtime +"$log_retention" -exec rm -f {} \;
 fi
+
+if [ -n "$result_file_path" ]; then
+    log "INFO" "export log cleaned information"
+    echo "$pre_size, $cleaned_size, $post_size" >> "$result_file_path"
+fi
+
 
 log "INFO" "Process completed"

@@ -564,4 +564,12 @@ else {
         Get-ChildItem -Path "$LogPath\Log-Man_*" -File | Where-Object CreationTime -lt (Get-Date).AddDays(-$LogManOwnHistory) | Remove-Item -Recurse
     }
 }
-## End
+##
+
+Function Calculate-Size {
+    param (
+        [string]$Folder,
+        [string]$Extension
+    )
+    (Get-ChildItem -Path $Folder -Recurse -Include "*$Extension" | Measure-Object -Property Length -Sum).Sum
+}
