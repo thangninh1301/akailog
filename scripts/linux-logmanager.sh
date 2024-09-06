@@ -2,7 +2,7 @@
 
 # Functions
 usage() {
-    echo "Usage: $0 -s <source_path> -k <log_history> -b <backup_path> -h <backup_retention> -w <work_dir> -z <zip_name> -l <log_path> -r <log_retention> [-c] [-z] [-n] [-H] -e <log_extension>"
+    echo "Usage: $0 -s <source_path> -k <log_history> -b <backup_path> -h <backup_retention> -w <work_dir> -z <zip_name> -l <log_path> -r <log_retention> [-c] [-H] -e <log_extension> [-p <result_file_path>]"
     echo "Options:"
     echo "  -s  Path to logs"
     echo "  -k  Number of days to keep logs"
@@ -27,7 +27,7 @@ result_file_path=""
 log_path=""
 
 # Parse command-line arguments
-while getopts "s:k:b:h:w:z:l:r:e:p:S:j:cznH" opt; do
+while getopts "s:k:b:h:w:z:l:r:e:p:cH" opt; do
     case $opt in
         s) source_path="$OPTARG" ;;
         k) log_history="$OPTARG" ;;
@@ -39,12 +39,12 @@ while getopts "s:k:b:h:w:z:l:r:e:p:S:j:cznH" opt; do
         r) log_retention="$OPTARG" ;;
         e) log_extension="$OPTARG" ;;
         p) result_file_path="$OPTARG" ;;
+        c) compress=true ;;
         H) usage; exit 0 ;;
         *) usage; exit 1 ;;
     esac
 done
 
-# Log function
 log() {
     local type="$1"
     local msg="$2"
@@ -65,6 +65,7 @@ compress_logs() {
     tar -czf "$work_dir/$zip_name-$(date +'%Y-%m-%d_%H-%M-%S').tar.gz" -C "$work_dir" "$zip_name"
 }
 
+# Ensure essential parameters are provided
 if [ -z "$source_path" ]; then
     log "ERROR" "You must specify -s <source_path>."
     exit 1
@@ -84,9 +85,6 @@ log "INFO" "Pre-cleaning size of logs with extension $log_extension: $pre_size"
 cleaned_size=$(find "$source_path" -type f -name "*${log_extension}" -mtime +"$log_history" -exec du -ch {} + | grep total$ | cut -f1)
 log "INFO" "Total size of files to be cleaned: $cleaned_size"
 
-# Remove old logs
-find "$source_path" -type f -name "*${log_extension}" -mtime +"$log_history" -exec rm -f {} \;
-
 # Backup logs
 if [ -n "$backup_path" ]; then
     cp -r "$source_path" "$work_dir/$zip_name"
@@ -96,6 +94,9 @@ if [ -n "$backup_path" ]; then
     mv "$work_dir/$zip_name"* "$backup_path"
     find "$backup_path" -type f -mtime +"$backup_retention" -exec rm -f {} \;
 fi
+
+# Remove old logs
+find "$source_path" -type f -name "*${log_extension}" -mtime +"$log_history" -exec rm -f {} \;
 
 # Calculate Post-cleaning size
 post_size=$(calculate_size "$source_path" "$log_extension")
@@ -107,10 +108,10 @@ if [ -n "$log_retention" ]; then
     find "$log_path" -type f -mtime +"$log_retention" -exec rm -f {} \;
 fi
 
+# Save result file
 if [ -n "$result_file_path" ]; then
-    log "INFO" "export log cleaned information"
+    log "INFO" "Export log cleaned information"
     echo "$pre_size, $cleaned_size, $post_size" >> "$result_file_path"
 fi
-
 
 log "INFO" "Process completed"
