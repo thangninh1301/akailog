@@ -74,6 +74,9 @@ compress_logs() {
     # Create archive
     tar -czf "$zip_file" -C "$source_path" .
 
+    # move archive and clean old log
+    mv "$work_dir/$zip_name"* "$backup_path"
+    find "$backup_path" -type f -mtime +"$backup_retention" -exec rm -f {} \;
     if [ $? -eq 0 ]; then
         log "INFO" "Compression successful: $zip_file"
     else
@@ -107,8 +110,6 @@ if [ -n "$backup_path" ]; then
     if [ "$compress" = true ]; then
         compress_logs
     fi
-    mv "$work_dir/$zip_name"* "$backup_path"
-    find "$backup_path" -type f -mtime +"$backup_retention" -exec rm -f {} \;
 fi
 
 # Remove old logs
