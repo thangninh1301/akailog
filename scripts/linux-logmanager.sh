@@ -56,7 +56,7 @@ log() {
 calculate_size() {
     local folder="$1"
     local extension="$2"
-    find "$folder" -type f -name "*${extension}" -exec du -ch {} + | grep total$ | cut -f1
+    find "$folder" -type f -name "*${extension}" -exec stat --format="%s" {} + | awk '{total += $1} END {print total}'
 }
 
 # Compress logs function with dynamic naming
