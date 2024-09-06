@@ -59,10 +59,26 @@ calculate_size() {
     find "$folder" -type f -name "*${extension}" -exec du -ch {} + | grep total$ | cut -f1
 }
 
-# Compress logs function
+# Compress logs function with dynamic naming
 compress_logs() {
-    log "INFO" "Compressing using gzip"
-    tar -czf "$work_dir/$zip_name-$(date +'%Y-%m-%d_%H-%M-%S').tar.gz" -C "$work_dir" "$zip_name"
+    # Set default zip name if not provided
+    if [ -z "$zip_name" ]; then
+        zip_name="Logs-$(hostname)"
+    fi
+
+    local current_time=$(date +'%Y-%m-%d_%H-%M-%S')
+    local zip_file="$work_dir/${zip_name}-${current_time}.tar.gz"
+
+    log "INFO" "Compressing logs to $zip_file"
+
+    # Create archive
+    tar -czf "$zip_file" -C "$source_path" .
+
+    if [ $? -eq 0 ]; then
+        log "INFO" "Compression successful: $zip_file"
+    else
+        log "ERROR" "Compression failed"
+    fi
 }
 
 # Ensure essential parameters are provided
