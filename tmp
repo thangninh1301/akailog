@@ -1,1 +1,41 @@
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.labels.failure-domain\.beta\.kubernetes\.io/zone}{"\n"}{end}'
+
+
+NAMESPACE=<your-namespace>
+TAINT_KEY=<your-taint-key>
+TAINT_VALUE=<your-taint-value>
+TAINT_EFFECT=<your-taint-effect>
+
+for DEPLOY in $(kubectl get deployments -n $NAMESPACE -o jsonpath='{.items[*].metadata.name}'); do
+  CURRENT_TAINTS=$(kubectl describe deployment $DEPLOY -n $NAMESPACE | grep Tolerations | grep $TAINT_KEY || true)
+  if [ -z "$CURRENT_TAINTS" ]; then
+    kubectl patch deployment $DEPLOY -n $NAMESPACE --patch '{"spec": {"template": {"spec": {"tolerations": [{"key": "'$TAINT_KEY'", "value": "'$TAINT_VALUE'", "effect": "'$TAINT_EFFECT'"}]}}}}'
+    echo "Added taint $TAINT_KEY=$TAINT_VALUE:$TAINT_EFFECT to deployment $DEPLOY"
+  else
+    echo "Taint $TAINT_KEY already exists in deployment $DEPLOY, skipping..."
+  fi
+done
+
+NAMESPACE=<your-namespace>
+TAINT_KEY=<your-taint-key>
+
+for DEPLOY in $(kubectl get deployments -n $NAMESPACE -o jsonpath='{.items[*].metadata.name}'); do
+  CURRENT_TOLERATIONS=$(kubectl get deployment $DEPLOY -n $NAMESPACE -o jsonpath='{.spec.template.spec.tolerations}' | grep $TAINT_KEY || true)
+  if [ ! -z "$CURRENT_TOLERATIONS" ]; then
+    kubectl patch deployment $DEPLOY -n $NAMESPACE --type='json' -p='[{"op": "remove", "path": "/spec/template/spec/tolerations"}]'
+    echo "Removed toleration with key $TAINT_KEY from deployment $DEPLOY"
+  else
+    echo "No toleration with key $TAINT_KEY found in deployment $DEPLOY, skipping..."
+  fi
+done
+
+ZONE=<your-zone>
+TAINT_KEY=<your-taint-key>
+
+for NODE in $(kubectl get nodes --selector=failure-domain.beta.kubernetes.io/zone=$ZONE -o jsonpath='{.items[*].metadata.name}'); do
+  kubectl taint nodes $NODE $TAINT_KEY- || echo "No taint $TAINT_KEY found on node $NODE"
+done
+
+for NODE in $(kubectl get nodes -o json | jq -r '.items[] | select(.metadata.labels["failure-domain.beta.kubernetes.io/zone"] == "'$ZONE'") | .metadata.name'); do
+  kubectl drain $NODE --ignore-daemonsets --delete-emptydir-data --force || echo "Failed to drain node $NODE"
+done
