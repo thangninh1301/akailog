@@ -97,3 +97,15 @@ for NODE in $(kubectl get nodes -o json | jq -r '.items[] | select(.metadata.lab
     echo "Label $LABEL_KEY does not exist on node $NODE, skipping..."
   fi
 done
+
+
+PODS=$(kubectl get pods --all-namespaces -o json)
+
+# Iterate through each pod and find the zone of the node it is running on
+echo -e "NAMESPACE\tPOD NAME\tNODE\tZONE"
+echo "-----------------------------------------------------"
+
+echo "$PODS" | jq -r '.items[] | "\(.metadata.namespace)\t\(.metadata.name)\t\(.spec.nodeName)\t\(.spec.nodeName | @sh)"' | while read -r NAMESPACE POD NODE _; do
+  ZONE=$(kubectl get node "$NODE" -o jsonpath='{.metadata.labels.failure-domain\.beta\.kubernetes\.io/zone}' 2>/dev/null)
+  echo -e "$NAMESPACE\t$POD\t$NODE\t$ZONE"
+done
