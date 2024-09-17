@@ -59,3 +59,41 @@ for DEPLOYMENT in $(kubectl get deployments -n $NAMESPACE -o jsonpath='{.items[*
     echo "nodeSelector $NODE_SELECTOR_KEY: $NODE_SELECTOR_VALUE already exists in deployment $DEPLOYMENT, skipping..."
   fi
 done
+
+
+
+LABEL_KEY="drp"
+LABEL_VALUE="true"
+
+# Iterate through all nodes in the cluster
+for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
+  # Check if the label already exists on the node
+  EXISTS=$(kubectl get node $NODE -o jsonpath="{.metadata.labels['$LABEL_KEY']}" 2>/dev/null)
+
+  if [ "$EXISTS" != "$LABEL_VALUE" ]; then
+    # Add the label if it does not exist
+    kubectl label nodes $NODE $LABEL_KEY=$LABEL_VALUE --overwrite
+    echo "Added label $LABEL_KEY=$LABEL_VALUE to node $NODE"
+  else
+    echo "Label $LABEL_KEY=$LABEL_VALUE already exists on node $NODE, skipping..."
+  fi
+done
+
+ZONE=<your-zone>
+
+# Label key to remove
+LABEL_KEY="drp"
+
+# Iterate through all nodes in the specified zone
+for NODE in $(kubectl get nodes -o json | jq -r '.items[] | select(.metadata.labels["failure-domain.beta.kubernetes.io/zone"] == "'$ZONE'") | .metadata.name'); do
+  # Check if the label already exists on the node
+  EXISTS=$(kubectl get node $NODE -o jsonpath="{.metadata.labels['$LABEL_KEY']}" 2>/dev/null)
+
+  if [ "$EXISTS" == "true" ]; then
+    # Remove the label if it exists
+    kubectl label node $NODE $LABEL_KEY-
+    echo "Removed label $LABEL_KEY from node $NODE"
+  else
+    echo "Label $LABEL_KEY does not exist on node $NODE, skipping..."
+  fi
+done
