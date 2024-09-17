@@ -1,30 +1,80 @@
 ---
-- hosts: localhost
-  gather_facts: no
-
+- name: Create jobs for Linux and Windows hosts
+  hosts: all
+  become: yes
   tasks:
-    - name: Create variable file on Linux hosts
-      template:
-        src: templates/variables_template.j2
-        dest: "{{ path_job }}variables_info.txt"
-      when: ansible_connection != 'winrm'
+    - name: "Create job on Linux hosts"
+      block:
+        - name: "Generate cron job script from template"
+          template:
+            src: linux_cron_job.j2
+            dest: "{{ path_job }}/{{ item.name }}_cron.sh"
+            mode: '0755'
+          loop: "{{ service }}"
+          when: ansible_connection == 'ssh'
 
-    - name: Create variable file on Windows hosts
-      win_template:
-        src: templates/variables_template.j2
-        dest: "{{ path_job | replace('/', '\\') }}variables_info.txt"
-      when: ansible_connection == 'winrm'
+        - name: "Ensure cron job is present on Linux"
+          cron:
+            name: "{{ job_name }} for {{ item.name }}"
+            minute: "{{ time_to_run.split()[0] }}"
+            hour: "{{ time_to_run.split()[1] }}"
+            day: "{{ time_to_run.split()[2] }}"
+            month: "{{ time_to_run.split()[3] }}"
+            weekday: "{{ time_to_run.split()[4] }}"
+            job: "{{ path_job }}/{{ item.name }}_cron.sh"
+          loop: "{{ service }}"
+          when: ansible_connection == 'ssh'
 
+        - name: "Create backup directories if needed"
+          file:
+            path: "{{ item.backup_path | default(item.path + '/backup') }}"
+            state: directory
+            mode: '0755'
+          loop: "{{ service }}"
+          when: ansible_connection == 'ssh' and item.backup
 
-#  - name: Install Batchjobs on crontab
-#    cron:
-#      name: "Manage Disk Space"
-#      minute: "30"
-#      hour: "02"
-#      weekday: "0-6"
-#      job: "home/export/manageDiskSpace.sh > home/export/manageDiskSpace.sh.log 2>&1"
-#      #user: "admin"
-#      disabled: "no"
-#    become_user: "{{ admin_user }}"
-#    tags:
-#      - cronjobs
+    - name: "Create job on Windows hosts"
+      block:
+        - name: "Generate PowerShell script for scheduled task from template"
+          template:
+            src: windows_scheduled_task.j2
+            dest: "{{ path_job }}\\{{ item.name }}_cleanup.ps1"
+          loop: "{{ service }}"
+          when: ansible_connection == 'winrm'
+
+        - name: "Ensure scheduled task is present on Windows"
+          win_scheduled_task:
+            name: "{{ job_name }}_{{ item.name }}"
+            description: "Cleanup job for {{ item.name }} service logs"
+            actions:
+              - path: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+                arguments: "-File {{ path_job }}\\{{ item.name }}_cleanup.ps1"
+            trigger:
+              - schedule: daily
+                start_time: "{{ start_time }}"
+            username: "SYSTEM"
+            state: present
+          loop: "{{ service }}"
+          when: ansible_connection == 'winrm'
+
+        - name: "Create backup directories on Windows if needed"
+          win_file:
+            path: "{{ item.backup_path | default(item.path + '\\backup') }}"
+            state: directory
+          loop: "{{ service }}"
+          when: ansible_connection == 'winrm' and item.backup
+
+        - name: "Schedule backup jobs on Windows"
+          win_scheduled_task:
+            name: "Backup_{{ job_name }}_{{ item.name }}"
+            description: "Backup job for {{ item.name }} service logs"
+            actions:
+              - path: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+                arguments: "-Command 'Copy-Item -Path {{ item.path }}\\* -Destination {{ item.backup_path | default(item.path + '\\backup') }} -Recurse'"
+            trigger:
+              - schedule: daily
+                start_time: "{{ start_time }}"
+            username: "SYSTEM"
+            state: present
+          loop: "{{ service }}"
+          when: ansible_connection == 'winrm' and item.backup
