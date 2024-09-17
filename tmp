@@ -39,3 +39,23 @@ done
 for NODE in $(kubectl get nodes -o json | jq -r '.items[] | select(.metadata.labels["failure-domain.beta.kubernetes.io/zone"] == "'$ZONE'") | .metadata.name'); do
   kubectl drain $NODE --ignore-daemonsets --delete-emptydir-data --force || echo "Failed to drain node $NODE"
 done
+
+NAMESPACE=<your-namespace>
+
+# Node selector key and value
+NODE_SELECTOR_KEY="drp"
+NODE_SELECTOR_VALUE="true"
+
+# Iterate through all deployments in the specified namespace
+for DEPLOYMENT in $(kubectl get deployments -n $NAMESPACE -o jsonpath='{.items[*].metadata.name}'); do
+  # Check if the nodeSelector already exists in the deployment
+  EXISTS=$(kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o jsonpath="{.spec.template.spec.nodeSelector['$NODE_SELECTOR_KEY']}" 2>/dev/null)
+
+  if [ "$EXISTS" != "$NODE_SELECTOR_VALUE" ]; then
+    # Add the nodeSelector if it does not exist
+    kubectl patch deployment $DEPLOYMENT -n $NAMESPACE --type='json' -p="[{\"op\": \"add\", \"path\": \"/spec/template/spec/nodeSelector/$NODE_SELECTOR_KEY\", \"value\": \"$NODE_SELECTOR_VALUE\"}]"
+    echo "Added nodeSelector $NODE_SELECTOR_KEY: $NODE_SELECTOR_VALUE to deployment $DEPLOYMENT"
+  else
+    echo "nodeSelector $NODE_SELECTOR_KEY: $NODE_SELECTOR_VALUE already exists in deployment $DEPLOYMENT, skipping..."
+  fi
+done
