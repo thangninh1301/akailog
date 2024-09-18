@@ -16,11 +16,11 @@
         - name: "Ensure cron job is present on Linux"
           cron:
             name: "{{ job_name }} for {{ item.name }}"
-            minute: "{{ time_to_run.split()[0] }}"
-            hour: "{{ time_to_run.split()[1] }}"
-            day: "{{ time_to_run.split()[2] }}"
-            month: "{{ time_to_run.split()[3] }}"
-            weekday: "{{ time_to_run.split()[4] }}"
+            minute: "0"
+            hour: "0"  # Daily job at midnight
+            day: "*"
+            month: "*"
+            weekday: "*"
             job: "{{ path_job }}/{{ item.name }}_cron.sh"
           loop: "{{ service }}"
           when: ansible_connection == 'ssh'
@@ -51,7 +51,7 @@
                 arguments: "-File {{ path_job }}\\{{ item.name }}_cleanup.ps1"
             trigger:
               - schedule: daily
-                start_time: "{{ start_time }}"
+                start_boundary: "00:00:00"  # Daily job at midnight
             username: "SYSTEM"
             state: present
           loop: "{{ service }}"
@@ -73,7 +73,7 @@
                 arguments: "-Command 'Copy-Item -Path {{ item.path }}\\* -Destination {{ item.backup_path | default(item.path + '\\backup') }} -Recurse'"
             trigger:
               - schedule: daily
-                start_time: "{{ start_time }}"
+                start_boundary: "00:00:00"  # Daily backup at midnight
             username: "SYSTEM"
             state: present
           loop: "{{ service }}"
