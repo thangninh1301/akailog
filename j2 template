@@ -116,3 +116,5 @@ else
     exit 1
 fi
 
+echo "This will not add a new line." | sed ':a;N;$!ba;s/\n//g'
+
