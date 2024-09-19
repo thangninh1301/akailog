@@ -52,4 +52,25 @@ $log_manager_script \
     {% if service.backup_path is defined %} --backup-path "{{ service.backup_path }}" {% endif %}
 
 if [ $? -ne 0 ]; then
-    echo
+    echo "Error: Log cleanup (retention) failed for {{ service.name }}"
+else
+    echo "Log cleanup (retention) succeeded for {{ service.name }}"
+fi
+
+{% elif service.clean_type == 'rotation' %}
+# Call the log-rotation script for {{ service.name }}
+$log_rotation_script \
+    --service "{{ service.name }}" \
+    --path "{{ service.path }}" \
+    {% if service.log_extension is defined %} --log-extension "{{ service.log_extension }}" {% endif %}
+
+if [ $? -ne 0 ]; then
+    echo "Error: Log rotation failed for {{ service.name }}"
+else
+    echo "Log rotation succeeded for {{ service.name }}"
+fi
+
+{% endif %}
+{% endfor %}
+
+echo "Log cleanup and rotation tasks completed for {{ job_name }} on {{ ansible_host }}"
