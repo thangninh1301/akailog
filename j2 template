@@ -1,24 +1,22 @@
-#!/bin/bash
-
-# Log cleanup job for {{ job_name }}
+# Log cleanup and rotation script for {{ job_name }}
 # Leader PIC: {{ leader_PIC }}
 # Time to run: {{ time_to_run }}
 # Host: {{ ansible_host }}
 
-# Paths to the log manager scripts
-log_manager_script="{{ path_job }}/linux-log-manager.sh"
-log_rotation_script="{{ path_job }}/log-rotation.sh"
+# Paths to the log manager and rotation scripts
+$logManagerScript = "{{ path_job }}\\windows-log-manager.ps1"
+$logRotationScript = "{{ path_job }}\\log-rotation.ps1"
 
 # Ensure the log manager scripts exist
-if [ ! -f "$log_manager_script" ]; then
-    echo "Error: Log manager script not found at $log_manager_script"
-    exit 1
-fi
+if (-not (Test-Path -Path $logManagerScript)) {
+    Write-Host "Error: Log manager script not found at $logManagerScript"
+    Exit 1
+}
 
-if [ ! -f "$log_rotation_script" ]; then
-    echo "Error: Log rotation script not found at $log_rotation_script"
-    exit 1
-fi
+if (-not (Test-Path -Path $logRotationScript)) {
+    Write-Host "Error: Log rotation script not found at $logRotationScript"
+    Exit 1
+}
 
 {% for service in service %}
 # Service: {{ service.name }}
@@ -35,42 +33,42 @@ fi
 {% if service.backup_path is defined %}
 # Backup Path: {{ service.backup_path }}
 {% else %}
-# Backup Path: {{ service.path }}/backup
+# Backup Path: {{ service.path }}\\backup
 {% endif %}
 {% endif %}
 # Clean Type: {{ service.clean_type }}
 
 {% if service.clean_type == 'retention' %}
-# Call the linux-log-manager script for {{ service.name }}
-$log_manager_script \
-    --service "{{ service.name }}" \
-    --path "{{ service.path }}" \
-    {% if service.retention_rate is defined %} --retention {{ service.retention_rate }} {% endif %} \
-    {% if service.log_extension is defined %} --log-extension "{{ service.log_extension }}" {% endif %} \
-    {% if service.backup %} --backup {% endif %} \
-    {% if service.backup_retention_rate is defined %} --backup-retention "{{ service.backup_retention_rate }}" {% endif %} \
-    {% if service.backup_path is defined %} --backup-path "{{ service.backup_path }}" {% endif %}
+# Call the windows-log-manager script for {{ service.name }}
+powershell -ExecutionPolicy Bypass -File $logManagerScript `
+    -ServiceName "{{ service.name }}" `
+    -LogPath "{{ service.path }}" `
+    {% if service.retention_rate is defined %} -RetentionDays {{ service.retention_rate }} {% endif %} `
+    {% if service.log_extension is defined %} -LogExtension "{{ service.log_extension }}" {% endif %} `
+    {% if service.backup %} -BackupEnabled $true {% endif %} `
+    {% if service.backup_retention_rate is defined %} -BackupRetentionDays {{ service.backup_retention_rate }} {% endif %} `
+    {% if service.backup_path is defined %} -BackupPath "{{ service.backup_path }}" {% endif %}
 
-if [ $? -ne 0 ]; then
-    echo "Error: Log cleanup (retention) failed for {{ service.name }}"
-else
-    echo "Log cleanup (retention) succeeded for {{ service.name }}"
-fi
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Error: Log cleanup (retention) failed for {{ service.name }}"
+} else {
+    Write-Host "Log cleanup (retention) succeeded for {{ service.name }}"
+}
 
 {% elif service.clean_type == 'rotation' %}
 # Call the log-rotation script for {{ service.name }}
-$log_rotation_script \
-    --service "{{ service.name }}" \
-    --path "{{ service.path }}" \
-    {% if service.log_extension is defined %} --log-extension "{{ service.log_extension }}" {% endif %}
+powershell -ExecutionPolicy Bypass -File $logRotationScript `
+    -ServiceName "{{ service.name }}" `
+    -LogPath "{{ service.path }}" `
+    {% if service.log_extension is defined %} -LogExtension "{{ service.log_extension }}" {% endif %}
 
-if [ $? -ne 0 ]; then
-    echo "Error: Log rotation failed for {{ service.name }}"
-else
-    echo "Log rotation succeeded for {{ service.name }}"
-fi
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Error: Log rotation failed for {{ service.name }}"
+} else {
+    Write-Host "Log rotation succeeded for {{ service.name }}"
+}
 
 {% endif %}
 {% endfor %}
 
-echo "Log cleanup and rotation tasks completed for {{ job_name }} on {{ ansible_host }}"
+Write-Host "Log cleanup and rotation tasks completed for {{ job_name }} on {{ ansible_host }}"
