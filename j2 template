@@ -1,0 +1,56 @@
+
+#!/bin/bash
+
+# Log cleanup job for {{ job_name }}
+# Leader PIC: {{ leader_PIC }}
+# Time to run: {{ time_to_run }}
+# Host: {{ ansible_host }}
+
+# Path to the log manager script
+log_manager_script="{{ path_job }}/linux-log-manager.sh"
+
+# Ensure the log manager script exists
+if [ ! -f "$log_manager_script" ]; then
+    echo "Error: Log manager script not found at $log_manager_script"
+    exit 1
+fi
+
+{% for service in service %}
+# Service: {{ service.name }}
+# Path: {{ service.path }}
+{% if service.retention_rate is defined %}
+# Retention rate: {{ service.retention_rate }} days
+{% endif %}
+{% if service.log_extension is defined %}
+# Log Extension: {{ service.log_extension }}
+{% endif %}
+{% if service.backup %}
+# Backup Enabled: Yes
+# Backup Retention Rate: {{ service.backup_retention_rate }} days
+{% if service.backup_path is defined %}
+# Backup Path: {{ service.backup_path }}
+{% else %}
+# Backup Path: {{ service.path }}/backup
+{% endif %}
+{% endif %}
+# Type: {{ service.type }}
+
+# Call the linux-log-manager script for {{ service.name }}
+$log_manager_script \
+    --service "{{ service.name }}" \
+    --path "{{ service.path }}" \
+    {% if service.retention_rate is defined %} --retention {{ service.retention_rate }} {% endif %} \
+    {% if service.log_extension is defined %} --log-extension "{{ service.log_extension }}" {% endif %} \
+    {% if service.backup %} --backup {% endif %} \
+    {% if service.backup_retention_rate is defined %} --backup-retention "{{ service.backup_retention_rate }}" {% endif %} \
+    {% if service.backup_path is defined %} --backup-path "{{ service.backup_path }}" {% endif %}
+
+if [ $? -ne 0 ]; then
+    echo "Error: Log cleanup failed for {{ service.name }}"
+else
+    echo "Log cleanup succeeded for {{ service.name }}"
+fi
+
+{% endfor %}
+
+echo "Log cleanup and backup completed for {{ job_name }} on {{ ansible_host }}"
