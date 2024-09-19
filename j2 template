@@ -72,3 +72,47 @@ if ($LASTEXITCODE -ne 0) {
 {% endfor %}
 
 Write-Host "Log cleanup and rotation tasks completed for {{ job_name }} on {{ ansible_host }}"
+
+#!/bin/bash
+
+# Nexus repository configuration
+NEXUS_URL="http://nexus.example.com/repository/repo-name"
+NEXUS_USERNAME="your-username"
+NEXUS_PASSWORD="your-password"
+
+# The file to be uploaded
+FILE_PATH="path/to/your-file.txt"
+FILE_NAME=$(basename "$FILE_PATH")
+
+# Function to log error messages
+log_error() {
+    echo "[ERROR] $1"
+}
+
+# Function to upload the file
+upload_file() {
+    echo "Attempting to upload $FILE_NAME to Nexus..."
+
+    # Try uploading the file using curl
+    response=$(curl -u "$NEXUS_USERNAME:$NEXUS_PASSWORD" \
+        --upload-file "$FILE_PATH" \
+        "$NEXUS_URL/$FILE_NAME" -w "%{http_code}" -o /dev/null -s)
+
+    # Check if the response indicates success (200 or 201)
+    if [[ "$response" == "200" || "$response" == "201" ]]; then
+        echo "File $FILE_NAME successfully uploaded to Nexus."
+    else
+        # If the upload fails, log an error and return failure status
+        log_error "Failed to upload $FILE_NAME. HTTP Status: $response"
+        return 1
+    fi
+}
+
+# Try-catch equivalent in Bash
+if upload_file; then
+    echo "Operation completed successfully."
+else
+    echo "Operation failed. Please check the logs for more details."
+    exit 1
+fi
+
