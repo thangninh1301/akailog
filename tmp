@@ -109,3 +109,23 @@ echo "$PODS" | jq -r '.items[] | "\(.metadata.namespace)\t\(.metadata.name)\t\(.
   ZONE=$(kubectl get node "$NODE" -o jsonpath='{.metadata.labels.failure-domain\.beta\.kubernetes\.io/zone}' 2>/dev/null)
   echo -e "$NAMESPACE\t$POD\t$NODE\t$ZONE"
 done
+
+
+if [ -n "$LogPathUsr" ]; then
+    # Clean User entered string by removing trailing slash (if any)
+    LogPath="${LogPathUsr%/}"
+
+    # Make sure the log directory exists, create it if it doesn't
+    if [ ! -d "$LogPath" ]; then
+        mkdir -p "$LogPath"
+    fi
+
+    # Create a log file with a timestamp in the format "Log-Man_YYYY-MM-DD_HH-MM-SS.log"
+    LogFile="Log-Man_$(date +%Y-%m-%d_%H-%M-%S).log"
+    Log="$LogPath/$LogFile"
+
+    # Check if the log file already exists, if it does, clear its contents
+    if [ -f "$Log" ]; then
+        > "$Log"
+    fi
+fi
