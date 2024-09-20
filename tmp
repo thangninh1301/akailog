@@ -246,3 +246,6 @@ done
 
 echo "------------------------------------------"
 
+
+
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" - "}{.metadata.labels.topology\.kubernetes\.io/zone}{"\n"}{end}'
