@@ -129,3 +129,57 @@ if [ -n "$LogPathUsr" ]; then
         > "$Log"
     fi
 fi
+
+
+#!/bin/bash
+
+echo "Counting pods by zone for each deployment:"
+echo "------------------------------------------"
+
+# Initialize an associative array to count pods by deployment and zone
+declare -A deployment_zone_count
+
+# Get all pods across all namespaces
+pods=$(kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"|"}{.metadata.labels.app}{"|"}{.metadata.name}{"|"}{.spec.nodeName}{"|"}{.metadata.labels.failure-domain\.beta\.kubernetes\.io/zone}{"\n"}{end}')
+
+# Loop over each pod
+for pod in $pods
+do
+  # Extract the namespace, deployment name (from the app label), pod name, node name, and zone
+  namespace=$(echo $pod | cut -d'|' -f1)
+  deployment_name=$(echo $pod | cut -d'|' -f2)
+  pod_name=$(echo $pod | cut -d'|' -f3)
+  node_name=$(echo $pod | cut -d'|' -f4)
+  zone=$(echo $pod | cut -d'|' -f5)
+  
+  # If zone is empty, label it as "unknown"
+  if [ -z "$zone" ]; then
+    zone="unknown"
+  fi
+  
+  # Skip pods that don't belong to a deployment (missing app label)
+  if [ -z "$deployment_name" ]; then
+    continue
+  fi
+  
+  # Create a unique key for the deployment and zone combination
+  key="$namespace|$deployment_name|$zone"
+  
+  # Increment the counter for the respective deployment and zone
+  deployment_zone_count["$key"]=$((deployment_zone_count["$key"] + 1))
+done
+
+# Output the count for each deployment and zone
+for key in "${!deployment_zone_count[@]}"
+do
+  # Extract the namespace, deployment name, and zone from the key
+  namespace=$(echo $key | cut -d'|' -f1)
+  deployment_name=$(echo $key | cut -d'|' -f2)
+  zone=$(echo $key | cut -d'|' -f3)
+  
+  # Output the results
+  echo "Deployment: $deployment_name (Namespace: $namespace) - Zone: $zone - Pod count: ${deployment_zone_count[$key]}"
+done
+
+echo "------------------------------------------"
+
