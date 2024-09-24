@@ -14,7 +14,7 @@ DOWNLOAD_PATH = "./downloads"  # Local folder to save downloaded files
 if not os.path.exists(DOWNLOAD_PATH):
     os.makedirs(DOWNLOAD_PATH)
 
-# Function to list all files in Nexus for today, matching the format "result-YYYY-MM-DD-HH.xlsx"
+# Function to list all files in Nexus for today, matching the format "result_YYYY-MM-DD_HH-MM-SS.csv"
 def list_today_files():
     today = datetime.now().strftime("%Y-%m-%d")
     params = {
@@ -33,11 +33,11 @@ def list_today_files():
     
     for asset in assets:
         file_name = asset['path'].split("/")[-1]  # Extract the file name from the path
-        if file_name.startswith(f'result-{today}'):  # Only select files with today's date
-            # Check if the file matches the format result-YYYY-MM-DD-HH.xlsx
+        if file_name.startswith(f'result_{today}'):  # Only select files with today's date
+            # Check if the file matches the format result_YYYY-MM-DD_HH-MM-SS.csv
             try:
-                # This checks the exact format of the file name (with hour included)
-                datetime.strptime(file_name, f'result-{today}-%H.xlsx')
+                # This checks the exact format of the file name (with hour, minute, second)
+                datetime.strptime(file_name, f'result_{today}_%H-%M-%S.csv')
                 file_urls.append(asset['downloadUrl'])
             except ValueError:
                 continue  # Skip files that do not match the expected format
@@ -57,9 +57,9 @@ def download_file(file_url):
         print(f"Failed to download {file_url}: {response.status_code}")
         return None
 
-# Function to read Excel file and convert to list of dictionaries
-def read_excel_to_dict(excel_file_path):
-    df = pd.read_excel(excel_file_path)
+# Function to read CSV file and convert to list of dictionaries
+def read_csv_to_dict(csv_file_path):
+    df = pd.read_csv(csv_file_path)
     return df.to_dict(orient='records')  # Converts to list of dicts (Array of objects)
 
 # Function to import data into MSSQL database
@@ -83,7 +83,7 @@ def import_data_to_mssql(data, table_name, conn_str):
 
 # Main function to execute the process
 def main():
-    # List all files for today in Nexus, matching the format "result-YYYY-MM-DD-HH.xlsx"
+    # List all files for today in Nexus, matching the format "result_YYYY-MM-DD_HH-MM-SS.csv"
     file_urls = list_today_files()
     
     if not file_urls:
@@ -104,15 +104,15 @@ def main():
     # Process each file found for today
     for file_url in file_urls:
         # Download the file
-        excel_file = download_file(file_url)
+        csv_file = download_file(file_url)
         
-        if excel_file:
-            # Read the Excel file
-            data = read_excel_to_dict(excel_file)
+        if csv_file:
+            # Read the CSV file
+            data = read_csv_to_dict(csv_file)
             
             # Import data into the MSSQL database
             import_data_to_mssql(data, table_name, conn_str)
-            print(f"Data from {excel_file} has been successfully imported into {table_name}.")
+            print(f"Data from {csv_file} has been successfully imported into {table_name}.")
     
     print("All files for today have been processed.")
 
