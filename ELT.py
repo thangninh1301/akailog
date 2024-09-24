@@ -1,21 +1,63 @@
 import os
+import requests
 import pandas as pd
 import pyodbc
 from datetime import datetime
 
-# Function to find all files for today in the directory
-def find_today_files(directory):
-    today = datetime.now().strftime("%Y-%m-%d")  # Get current date in YYYY-MM-DD format
-    today_files = []
-    
-    for file_name in os.listdir(directory):
-        if file_name.startswith('result-') and today in file_name:
-            file_path = os.path.join(directory, file_name)
-            today_files.append(file_path)
-    
-    return today_files
+# Nexus API settings
+NEXUS_URL = "https://nexus.edtexco.com/service/rest/v1/assets"
+REPOSITORY = "raw-test"
+AUTH = ('your_username', 'your_password')  # Replace with Nexus credentials or API token
+DOWNLOAD_PATH = "./downloads"  # Local folder to save downloaded files
 
-# Function to read the Excel file and convert to list of dictionaries
+# Ensure download directory exists
+if not os.path.exists(DOWNLOAD_PATH):
+    os.makedirs(DOWNLOAD_PATH)
+
+# Function to list all files in Nexus for today, matching the format "result-YYYY-MM-DD-HH.xlsx"
+def list_today_files():
+    today = datetime.now().strftime("%Y-%m-%d")
+    params = {
+        'repository': REPOSITORY,
+        'sort': 'name',
+        'direction': 'asc',
+    }
+
+    response = requests.get(NEXUS_URL, auth=AUTH, params=params)
+    if response.status_code != 200:
+        print(f"Failed to list files: {response.status_code}")
+        return []
+    
+    assets = response.json()['items']
+    file_urls = []
+    
+    for asset in assets:
+        file_name = asset['path'].split("/")[-1]  # Extract the file name from the path
+        if file_name.startswith(f'result-{today}'):  # Only select files with today's date
+            # Check if the file matches the format result-YYYY-MM-DD-HH.xlsx
+            try:
+                # This checks the exact format of the file name (with hour included)
+                datetime.strptime(file_name, f'result-{today}-%H.xlsx')
+                file_urls.append(asset['downloadUrl'])
+            except ValueError:
+                continue  # Skip files that do not match the expected format
+    
+    return file_urls
+
+# Function to download a file from Nexus
+def download_file(file_url):
+    file_name = os.path.join(DOWNLOAD_PATH, file_url.split("/")[-1])
+    
+    response = requests.get(file_url, auth=AUTH)
+    if response.status_code == 200:
+        with open(file_name, 'wb') as f:
+            f.write(response.content)
+        return file_name
+    else:
+        print(f"Failed to download {file_url}: {response.status_code}")
+        return None
+
+# Function to read Excel file and convert to list of dictionaries
 def read_excel_to_dict(excel_file_path):
     df = pd.read_excel(excel_file_path)
     return df.to_dict(orient='records')  # Converts to list of dicts (Array of objects)
@@ -41,10 +83,10 @@ def import_data_to_mssql(data, table_name, conn_str):
 
 # Main function to execute the process
 def main():
-    directory = "/path/to/nexus"  # Replace with the actual path to the Nexus folder
-    excel_files = find_today_files(directory)
+    # List all files for today in Nexus, matching the format "result-YYYY-MM-DD-HH.xlsx"
+    file_urls = list_today_files()
     
-    if not excel_files:
+    if not file_urls:
         print("No files found for today.")
         return
     
@@ -60,13 +102,17 @@ def main():
     table_name = 'your_table_name'
     
     # Process each file found for today
-    for excel_file in excel_files:
-        # Read the Excel file
-        data = read_excel_to_dict(excel_file)
+    for file_url in file_urls:
+        # Download the file
+        excel_file = download_file(file_url)
         
-        # Import data into the MSSQL database
-        import_data_to_mssql(data, table_name, conn_str)
-        print(f"Data from {excel_file} has been successfully imported into {table_name}.")
+        if excel_file:
+            # Read the Excel file
+            data = read_excel_to_dict(excel_file)
+            
+            # Import data into the MSSQL database
+            import_data_to_mssql(data, table_name, conn_str)
+            print(f"Data from {excel_file} has been successfully imported into {table_name}.")
     
     print("All files for today have been processed.")
 
