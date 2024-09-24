@@ -3,26 +3,17 @@ import pandas as pd
 import pyodbc
 from datetime import datetime
 
-# Function to find today's most recent file in the directory
-def find_latest_today_file(directory):
+# Function to find all files for today in the directory
+def find_today_files(directory):
     today = datetime.now().strftime("%Y-%m-%d")  # Get current date in YYYY-MM-DD format
-    latest_file = None
-    latest_time = None
+    today_files = []
     
     for file_name in os.listdir(directory):
         if file_name.startswith('result-') and today in file_name:
-            # Extract the hour (HH) from the file name (e.g., result-YYYY-MM-DD-HH.xlsx)
-            try:
-                file_time = datetime.strptime(file_name[7:16], "%Y-%m-%d-%H")
-            except ValueError:
-                continue  # Skip files that don't match the date-hour pattern
-            
-            # Compare to find the most recent file based on the hour
-            if latest_time is None or file_time > latest_time:
-                latest_file = os.path.join(directory, file_name)
-                latest_time = file_time
+            file_path = os.path.join(directory, file_name)
+            today_files.append(file_path)
     
-    return latest_file
+    return today_files
 
 # Function to read the Excel file and convert to list of dictionaries
 def read_excel_to_dict(excel_file_path):
@@ -51,14 +42,11 @@ def import_data_to_mssql(data, table_name, conn_str):
 # Main function to execute the process
 def main():
     directory = "/path/to/nexus"  # Replace with the actual path to the Nexus folder
-    excel_file = find_latest_today_file(directory)
+    excel_files = find_today_files(directory)
     
-    if excel_file is None:
-        print("No file found for today.")
+    if not excel_files:
+        print("No files found for today.")
         return
-    
-    # Read the Excel file
-    data = read_excel_to_dict(excel_file)
     
     # Connection string for MSSQL (replace with your own connection details)
     conn_str = (
@@ -69,10 +57,18 @@ def main():
         'PWD=your_password'
     )
     
-    # Import data into the desired MSSQL table
     table_name = 'your_table_name'
-    import_data_to_mssql(data, table_name, conn_str)
-    print(f"Data from {excel_file} has been successfully imported into {table_name}.")
+    
+    # Process each file found for today
+    for excel_file in excel_files:
+        # Read the Excel file
+        data = read_excel_to_dict(excel_file)
+        
+        # Import data into the MSSQL database
+        import_data_to_mssql(data, table_name, conn_str)
+        print(f"Data from {excel_file} has been successfully imported into {table_name}.")
+    
+    print("All files for today have been processed.")
 
 if __name__ == "__main__":
     main()
