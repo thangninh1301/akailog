@@ -63,3 +63,57 @@ def main():
 
 if __name__ == "__main__":
     main()
+---
+import pandas as pd
+import ipaddress
+
+# Function to read the source file with IP ranges and zone types
+def load_ip_mapping(file_path):
+    # Load the Excel file into a DataFrame
+    df = pd.read_excel(file_path)
+    
+    # Convert IP ranges to tuples of IP address objects (for easy comparison)
+    ip_mapping = []
+    for _, row in df.iterrows():
+        try:
+            # Assume the row contains ranges in CIDR notation (e.g., "192.168.1.0/24")
+            ip_range = ipaddress.ip_network(row['server_ip'])
+            ip_mapping.append({
+                'ip_range': ip_range,  # Store IP range as an ip_network object
+                'zone_type': row['zone_type']
+            })
+        except ValueError:
+            print(f"Invalid IP range format in row: {row['server_ip']}")
+    
+    return ip_mapping
+
+# Function to map a single IP address to a zone based on the loaded ranges
+def map_ip_to_zone(ip_address, ip_mapping):
+    try:
+        ip = ipaddress.ip_address(ip_address)  # Convert string IP to ip_address object
+    except ValueError:
+        return "Invalid IP Address"
+    
+    # Check which IP range the address belongs to
+    for entry in ip_mapping:
+        if ip in entry['ip_range']:
+            return entry['zone_type']  # Return the associated zone type
+    
+    return "No matching zone found"  # Return if no match is found
+
+# Example of using the above functions
+def main():
+    # Load the mapping file (adjust the path to your actual file location)
+    ip_mapping_file = "/path/to/your/source/file.xlsx"
+    ip_mapping = load_ip_mapping(ip_mapping_file)
+    
+    # Example of an IP address to map
+    test_ip = "192.168.1.45"
+    
+    # Map the IP address to its zone
+    zone = map_ip_to_zone(test_ip, ip_mapping)
+    
+    print(f"The IP {test_ip} belongs to zone: {zone}")
+
+if __name__ == "__main__":
+    main()
