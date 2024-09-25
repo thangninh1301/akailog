@@ -104,6 +104,7 @@ def import_data_to_mssql(data, table_name, conn_str):
             columns = ', '.join(row.keys())
             placeholders = ', '.join('?' * len(row))
             sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
+            print(sql)
             cursor.execute(sql, tuple(row.values()))
 
         conn.commit()
@@ -125,11 +126,13 @@ def main():
         return
 
     conn_str = (
-        'DRIVER={ODBC Driver 17 for SQL Server};'
+        'DRIVER={ODBC Driver 18 for SQL Server};'
         'SERVER=192.0.0.11,30542;'
         'DATABASE=MyDatabase;'
         'UID=SA;'
-        'PWD=mypasswordA@'
+        'PWD=mypasswordA@;'
+        "Encrypt=yes;"  # Enable encryption
+        "TrustServerCertificate=yes;"  # Bypass SSL certificate validation
     )
 
     table_name = 'LogDetails'  # Change this to your table name
@@ -154,3 +157,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# SELECT TABLE_NAME
+# FROM INFORMATION_SCHEMA.TABLES
+# WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_CATALOG = 'MyDatabase';
