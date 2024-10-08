@@ -249,3 +249,5 @@ echo "------------------------------------------"
 
 
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" - "}{.metadata.labels.topology\.kubernetes\.io/zone}{"\n"}{end}'
+
+kubectl get pods -o=jsonpath='{range .items[*]}{"Pod: "}{.metadata.name}{"\tNode: "}{.spec.nodeName}{"\tZone: "}{.spec.nodeName | kubectl get node -o=jsonpath="{.metadata.labels['topology\.kubernetes\.io/zone']}" }{"\n"}{end}'
