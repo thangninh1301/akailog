@@ -246,6 +246,12 @@ done
 
 echo "------------------------------------------"
 
+kubectl get pods -o=custom-columns="Pod:.metadata.name,Node:.spec.nodeName" --all-namespaces | while read pod node; do
+  zone=$(kubectl get node "$node" -o=jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')
+  echo "Pod: $pod, Node: $node, Zone: $zone"
+done
+
+
 
 
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" - "}{.metadata.labels.topology\.kubernetes\.io/zone}{"\n"}{end}'
