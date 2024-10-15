@@ -1,0 +1,42 @@
+pipeline {
+    agent {
+        // Use a Docker image with Python installed
+        docker {
+            image 'python:3.9' // Specify the Python version or any custom image with Python
+            args '-u' // Run Docker container with unbuffered output
+        }
+    }
+
+    stages {
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    // Install Python dependencies if needed (for example, from requirements.txt)
+                    sh 'pip install -r requirements.txt'
+                }
+            }
+        }
+
+        stage('Run Python Script') {
+            steps {
+                script {
+                    // Run your Python script
+                    sh 'python your_script.py'
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Archive artifacts (output or logs) if needed
+            archiveArtifacts artifacts: '**/output/**', allowEmptyArchive: true
+        }
+        success {
+            echo 'Pipeline completed successfully.'
+        }
+        failure {
+            echo 'Pipeline failed.'
+        }
+    }
+}
