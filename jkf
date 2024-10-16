@@ -1,51 +1,36 @@
-pipeline {
-    agent {
-        kubernetes {
-            label 'python-pod'
-            inheritFrom 'dso-default'
-            defaultContainer 'python'
-            containers {
-                containerTemplate(
-                    name: 'python',
-                    image: 'dockerdso-dev.techcombank.com.vn/dso/python-3.8:stable',
-                    command: '',
-                    ttyEnabled: true
-                )
+label = "worker-${UUID.randomUUID()}"
+
+podTemplate(
+    label: label,
+    cloud: 'dso-workload',
+    imagePullSecrets: ['nexus-dso-cred'],
+    containers: [
+        containerTemplate(
+            name: 'python',
+            image: 'dockerdso-dev.techcombank.com.vn/dso/python-3.8:stable',
+            command: '',
+            ttyEnabled: true
+        )
+    ]
+) {
+    node(label) {
+        container('python') {
+            stage('Hello World') {
+                sh """
+                echo 'Hello World'
+                """
             }
         }
-    }
 
-    stages {
-        stage('Run Python Script') {
-            steps {
-                container('python') {
-                    script {
-                        // Print Python version to confirm the environment
-                        sh 'python --version'
-                        
-                        // Write a simple Python script to a file
-                        writeFile file: 'your_script.py', text: '''
-                        print("Hello, World!")
-                        '''
-                        
-                        // Execute the Python script
-                        sh 'python your_script.py'
-                    }
-                }
+        // Adding a new stage while keeping the existing code
+        container('python') {
+            stage('Run Python Script') {
+                sh 'python --version'
+                sh '''
+                echo "print('Hello from Python')" > hello.py
+                python hello.py
+                '''
             }
-        }
-    }
-
-    post {
-        always {
-            // Clean up after the pipeline
-            echo 'Pipeline finished.'
-        }
-        success {
-            echo 'Pipeline completed successfully.'
-        }
-        failure {
-            echo 'Pipeline failed.'
         }
     }
 }
