@@ -35,3 +35,17 @@ pipeline {
             }
         }
     }
+
+    post {
+        always {
+            // Clean up after the pipeline
+            echo 'Pipeline finished.'
+        }
+        success {
+            echo 'Pipeline completed successfully.'
+        }
+        failure {
+            echo 'Pipeline failed.'
+        }
+    }
+}
