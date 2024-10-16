@@ -1,0 +1,32 @@
+import pyodbc
+
+# Define your connection variables
+server = 'your_server'  # e.g., 'localhost' or 'your_server.database.windows.net'
+database = 'your_database'  # e.g., 'testdb'
+username = 'your_username'  # e.g., 'sa'
+password = 'your_password'  # e.g., 'your_password'
+
+# Set up the connection string
+connection_string = f'DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password}'
+
+try:
+    # Establish the connection
+    conn = pyodbc.connect(connection_string)
+    print("Connection successful!")
+
+    # Create a cursor object to execute SQL queries
+    cursor = conn.cursor()
+
+    # Execute a simple query to test the connection
+    cursor.execute("SELECT @@VERSION;")
+
+    # Fetch and print the results
+    row = cursor.fetchone()
+    print(f"SQL Server version: {row[0]}")
+
+    # Close the cursor and connection
+    cursor.close()
+    conn.close()
+
+except Exception as e:
+    print(f"Error: {e}")
