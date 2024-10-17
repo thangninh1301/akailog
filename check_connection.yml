@@ -3,7 +3,7 @@
   hosts: all
   gather_facts: no
   vars:
-    domain_name: "nexus.edtexco.com"  # Variable for the domain name
+    domain_name: "nexus.edtexco.com"
     failed_hosts: []
     successful_hosts: []
 
@@ -13,78 +13,57 @@
         is_windows: "{{ 'true' if ansible_connection == 'winrm' else 'false' }}"
 
     # For Unix/Linux/RHEL hosts
-    - name: Perform nslookup and telnet on Unix/Linux/RHEL
+    - name: Perform nslookup on Unix/Linux/RHEL
       when: is_windows == 'false'
-      block:
-        - name: Run nslookup for {{ domain_name }} on Unix/Linux/RHEL
-          shell: nslookup {{ domain_name }}
-          register: nslookup_output
-          ignore_errors: yes
+      shell: nslookup {{ domain_name }}
+      register: nslookup_output
+      ignore_errors: yes
 
-        - name: Check nslookup result on Unix/Linux/RHEL
-          fail:
-            msg: "nslookup failed on host {{ ansible_host }} for domain {{ domain_name }}"
-          when: nslookup_output.rc != 0
-          ignore_errors: yes
+    - name: Debug nslookup output to inspect structure
+      debug:
+        var: nslookup_output
 
-        - name: Check if telnet is installed on Unix/Linux/RHEL
-          command: which telnet
-          register: telnet_check
-          failed_when: telnet_check.rc != 0
-          ignore_errors: yes
+    - name: Check if nslookup succeeded based on rc
+      when: nslookup_output.rc is defined and nslookup_output.rc == 0
+      debug:
+        msg: "nslookup succeeded on host {{ ansible_host }}"
 
-        - name: Perform telnet to {{ domain_name }} on Unix/Linux/RHEL if telnet is installed
-          when: telnet_check.rc == 0
-          shell: echo | telnet {{ domain_name }} 80
-          register: telnet_output
-          ignore_errors: yes
-
-        - name: Check telnet result on Unix/Linux/RHEL
-          fail:
-            msg: "Telnet to {{ domain_name }} failed on host {{ ansible_host }}"
-          when: telnet_output.rc != 0
-          ignore_errors: yes
+    - name: Check if nslookup failed based on rc
+      when: nslookup_output.rc is defined and nslookup_output.rc != 0
+      debug:
+        msg: "nslookup failed on host {{ ansible_host }}"
 
     # For Windows hosts
-    - name: Perform nslookup and telnet on Windows
+    - name: Perform nslookup on Windows
       when: is_windows == 'true'
-      block:
-        - name: Run nslookup for {{ domain_name }} on Windows
-          win_shell: nslookup {{ domain_name }}
-          register: nslookup_output
-          ignore_errors: yes
+      win_shell: nslookup {{ domain_name }}
+      register: nslookup_output
+      ignore_errors: yes
 
-        - name: Check nslookup result on Windows
-          fail:
-            msg: "nslookup failed on host {{ ansible_host }} for domain {{ domain_name }}"
-          when: nslookup_output.rc != 0
-          ignore_errors: yes
+    - name: Debug nslookup output on Windows to inspect structure
+      debug:
+        var: nslookup_output
 
-        - name: Check if Telnet-Client is installed on Windows
-          win_shell: Get-WindowsFeature -Name Telnet-Client | Select-Object -ExpandProperty Installed
-          register: telnet_check
-          ignore_errors: yes
+    - name: Check if nslookup succeeded on Windows
+      when: nslookup_output.stdout is defined and "'Name:' in nslookup_output.stdout"
+      debug:
+        msg: "nslookup succeeded on Windows host {{ ansible_host }}"
 
-        - name: Perform telnet to {{ domain_name }} on Windows if installed
-          when: telnet_check.stdout == "True"
-          win_shell: echo | telnet {{ domain_name }} 80
-          register: telnet_output
-          ignore_errors: yes
-
-        - name: Check telnet result on Windows
-          fail:
-            msg: "Telnet to {{ domain_name }} failed on host {{ ansible_host }}"
-          when: telnet_output.rc != 0
-          ignore_errors: yes
+    - name: Check if nslookup failed on Windows
+      when: nslookup_output.stdout is defined and "'Name:' not in nslookup_output.stdout"
+      debug:
+        msg: "nslookup failed on Windows host {{ ansible_host }}"
 
     # Log IPs of failed and successful hosts
     - name: Add host to the failed list if nslookup or telnet failed
-      when: (nslookup_output.rc != 0 or telnet_output.rc != 0)
+      when: (nslookup_output.rc is defined and nslookup_output.rc != 0) or 
+            (nslookup_output.stdout is defined and "'Name:' not in nslookup_output.stdout")
       set_fact:
         failed_hosts: "{{ failed_hosts + [ansible_host] }}"
 
-    - name: Add host to the successful list if both nslookup and telnet succeeded
-      when: (nslookup_output.rc == 0 and telnet_output.rc == 0)
+    - name: Add host to the successful list if nslookup succeeded
+      when: (nslookup_output.rc is defined and nslookup_output.rc == 0) or 
+            (nslookup_output.stdout is defined and "'Name:' in nslookup_output.stdout")
       set_fact:
         successful_hosts: "{{ successful_hosts + [ansible_host] }}"
 
