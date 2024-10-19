@@ -3,25 +3,20 @@ pipeline {
         kubernetes {
             label 'ansible-python-pod'
             defaultContainer 'jnlp'
-            yaml """
-apiVersion: v1
-kind: Pod
-metadata:
-  labels:
-    some-label: ansible-python-pod
-spec:
-  containers:
-  - name: ansible
-    image: ansible/ansible-runner
-    command:
-    - cat
-    tty: true
-  - name: python
-    image: python:3.9
-    command:
-    - cat
-    tty: true
-"""
+            containers {
+                containerTemplate {
+                    name 'ansible'
+                    image 'ansible/ansible-runner'
+                    ttyEnabled true
+                    command 'cat'
+                }
+                containerTemplate {
+                    name 'python'
+                    image 'python:3.9'
+                    ttyEnabled true
+                    command 'cat'
+                }
+            }
         }
     }
     environment {
@@ -29,19 +24,69 @@ spec:
         INVENTORY_PATH = "${env.WORKSPACE}/inventory"
     }
 
-    // Define parameters upfront using properties(parameters)
+    // Define parameters upfront using the specific format
     properties([
         parameters([
-            choice(
+            [
+                $class: 'ChoiceParameter',
+                choiceType: 'PT_SINGLE_SELECT',
+                name: 'ENVIRONMENT',
+                script: [
+                    $class: 'GroovyScript',
+                    script: [
+                        classpath: [],
+                        sandbox: true,
+                        script: '''
+                        return [
+                            "PROD - DC2",
+                            "PROD - DC1",
+                            "PROD - DR"
+                        ]
+                        '''
+                    ]
+                ]
+            ],
+            [
+                $class: 'ChoiceParameter',
+                choiceType: 'PT_SINGLE_SELECT',
                 name: 'INVENTORY_FILE',
-                choices: getInventoryFiles(),
-                description: 'Select inventory file'
-            ),
-            choice(
+                script: [
+                    $class: 'GroovyScript',
+                    script: [
+                        classpath: [],
+                        sandbox: true,
+                        script: '''
+                        def inventoryFiles = []
+                        def files = new File("${env.WORKSPACE}/inventory").listFiles()
+                        files.each { file ->
+                            if (file.isFile()) {
+                                inventoryFiles.add(file.getName())
+                            }
+                        }
+                        return inventoryFiles
+                        '''
+                    ]
+                ]
+            ],
+            [
+                $class: 'ChoiceParameter',
+                choiceType: 'PT_SINGLE_SELECT',
                 name: 'MODE',
-                choices: ['Run Python Script', 'Run Ansible Playbook', 'Echo HelloWorld'],
-                description: 'Select the mode to run'
-            )
+                script: [
+                    $class: 'GroovyScript',
+                    script: [
+                        classpath: [],
+                        sandbox: true,
+                        script: '''
+                        return [
+                            "Run Python Script",
+                            "Run Ansible Playbook",
+                            "Echo HelloWorld"
+                        ]
+                        '''
+                    ]
+                ]
+            ]
         ])
     ])
 
@@ -67,16 +112,4 @@ spec:
             }
         }
     }
-}
-
-// Helper function to get all inventory files from the dynamically referenced inventory folder
-def getInventoryFiles() {
-    def inventoryFiles = []
-    def files = new File("${env.WORKSPACE}/inventory").listFiles()
-    files.each { file ->
-        if (file.isFile()) {
-            inventoryFiles << file.getName()
-        }
-    }
-    return inventoryFiles.join('\n')
 }
