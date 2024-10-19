@@ -29,37 +29,39 @@ spec:
         INVENTORY_PATH = "${env.WORKSPACE}/inventory"
     }
 
-    // Define parameters upfront using properties
+    // Define parameters upfront using properties(parameters)
     properties([
-        choice(
-            name: 'INVENTORY_FILE',
-            choices: getInventoryFiles(),
-            description: 'Select inventory file'
-        ),
-        choice(
-            name: 'MODE',
-            choices: ['Run Python Script', 'Run Ansible Playbook', 'Echo HelloWorld'],
-            description: 'Select the mode to run'
-        )
+        parameters([
+            choice(
+                name: 'INVENTORY_FILE',
+                choices: getInventoryFiles(),
+                description: 'Select inventory file'
+            ),
+            choice(
+                name: 'MODE',
+                choices: ['Run Python Script', 'Run Ansible Playbook', 'Echo HelloWorld'],
+                description: 'Select the mode to run'
+            )
+        ])
     ])
 
     stages {
         stage('Run Task Based on Mode') {
             steps {
-                container('ansible') {
-                    script {
-                        if (params.MODE == 'Run Python Script') {
-                            container('python') {
-                                echo "Running Python Script"
-                                sh 'python3 /path/to/your/python_script.py'
-                            }
-                        } else if (params.MODE == 'Run Ansible Playbook') {
+                script {
+                    if (params.MODE == 'Run Python Script') {
+                        container('python') {
+                            echo "Running Python Script"
+                            sh 'python3 /path/to/your/python_script.py'
+                        }
+                    } else if (params.MODE == 'Run Ansible Playbook') {
+                        container('ansible') {
                             echo "Running Ansible Playbook with inventory: ${params.INVENTORY_FILE}"
                             // Use ansible-playbook inside the Ansible container
                             sh "ansible-playbook /path/to/your/ansible/playbook.yml -i ${INVENTORY_PATH}/${params.INVENTORY_FILE}"
-                        } else if (params.MODE == 'Echo HelloWorld') {
-                            echo "HelloWorld"
                         }
+                    } else if (params.MODE == 'Echo HelloWorld') {
+                        echo "HelloWorld"
                     }
                 }
             }
