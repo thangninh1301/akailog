@@ -1,259 +1,42 @@
-kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.labels.failure-domain\.beta\.kubernetes\.io/zone}{"\n"}{end}'
+pipeline {
+    agent any
+    environment {
+        // Define the path dynamically using $project Ansible variable
+        INVENTORY_PATH = "${env.WORKSPACE}/inventory"
+    }
+    parameters {
+        // Dynamically create a choice parameter by listing all files in the inventory folder
+        choice(name: 'INVENTORY_FILE', choices: getInventoryFiles(), description: 'Select inventory file')
+        choice(name: 'MODE', choices: ['Run Python Script', 'Run Ansible Playbook', 'Echo HelloWorld'], description: 'Select the mode to run')
+    }
+    stages {
+        stage('Run Task Based on Mode') {
+            steps {
+                script {
+                    if (params.MODE == 'Run Python Script') {
+                        echo "Running Python Script"
+                        sh 'python3 /path/to/your/python_script.py'
+                    } else if (params.MODE == 'Run Ansible Playbook') {
+                        echo "Running Ansible Playbook with inventory: ${params.INVENTORY_FILE}"
+                        // Run the ansible-playbook command with the dynamic project variable
+                        sh "ansible-playbook /path/to/your/ansible/playbook.yml -i ${INVENTORY_PATH}/${params.INVENTORY_FILE}"
+                    } else if (params.MODE == 'Echo HelloWorld') {
+                        echo "HelloWorld"
+                    }
+                }
+            }
+        }
+    }
+}
 
-
-NAMESPACE=<your-namespace>
-TAINT_KEY=<your-taint-key>
-TAINT_VALUE=<your-taint-value>
-TAINT_EFFECT=<your-taint-effect>
-
-for DEPLOY in $(kubectl get deployments -n $NAMESPACE -o jsonpath='{.items[*].metadata.name}'); do
-  CURRENT_TAINTS=$(kubectl describe deployment $DEPLOY -n $NAMESPACE | grep Tolerations | grep $TAINT_KEY || true)
-  if [ -z "$CURRENT_TAINTS" ]; then
-    kubectl patch deployment $DEPLOY -n $NAMESPACE --patch '{"spec": {"template": {"spec": {"tolerations": [{"key": "'$TAINT_KEY'", "value": "'$TAINT_VALUE'", "effect": "'$TAINT_EFFECT'"}]}}}}'
-    echo "Added taint $TAINT_KEY=$TAINT_VALUE:$TAINT_EFFECT to deployment $DEPLOY"
-  else
-    echo "Taint $TAINT_KEY already exists in deployment $DEPLOY, skipping..."
-  fi
-done
-
-NAMESPACE=<your-namespace>
-TAINT_KEY=<your-taint-key>
-
-for DEPLOY in $(kubectl get deployments -n $NAMESPACE -o jsonpath='{.items[*].metadata.name}'); do
-  CURRENT_TOLERATIONS=$(kubectl get deployment $DEPLOY -n $NAMESPACE -o jsonpath='{.spec.template.spec.tolerations}' | grep $TAINT_KEY || true)
-  if [ ! -z "$CURRENT_TOLERATIONS" ]; then
-    kubectl patch deployment $DEPLOY -n $NAMESPACE --type='json' -p='[{"op": "remove", "path": "/spec/template/spec/tolerations"}]'
-    echo "Removed toleration with key $TAINT_KEY from deployment $DEPLOY"
-  else
-    echo "No toleration with key $TAINT_KEY found in deployment $DEPLOY, skipping..."
-  fi
-done
-
-ZONE=<your-zone>
-TAINT_KEY=<your-taint-key>
-
-for NODE in $(kubectl get nodes --selector=failure-domain.beta.kubernetes.io/zone=$ZONE -o jsonpath='{.items[*].metadata.name}'); do
-  kubectl taint nodes $NODE $TAINT_KEY- || echo "No taint $TAINT_KEY found on node $NODE"
-done
-
-for NODE in $(kubectl get nodes -o json | jq -r '.items[] | select(.metadata.labels["failure-domain.beta.kubernetes.io/zone"] == "'$ZONE'") | .metadata.name'); do
-  kubectl drain $NODE --ignore-daemonsets --delete-emptydir-data --force || echo "Failed to drain node $NODE"
-done
-
-NAMESPACE=<your-namespace>
-
-# Node selector key and value
-NODE_SELECTOR_KEY="drp"
-NODE_SELECTOR_VALUE="true"
-
-# Iterate through all deployments in the specified namespace
-for DEPLOYMENT in $(kubectl get deployments -n $NAMESPACE -o jsonpath='{.items[*].metadata.name}'); do
-  # Check if the nodeSelector already exists in the deployment
-  EXISTS=$(kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o jsonpath="{.spec.template.spec.nodeSelector['$NODE_SELECTOR_KEY']}" 2>/dev/null)
-
-  if [ "$EXISTS" != "$NODE_SELECTOR_VALUE" ]; then
-    # Add the nodeSelector if it does not exist
-    kubectl patch deployment $DEPLOYMENT -n $NAMESPACE --type='json' -p="[{\"op\": \"add\", \"path\": \"/spec/template/spec/nodeSelector/$NODE_SELECTOR_KEY\", \"value\": \"$NODE_SELECTOR_VALUE\"}]"
-    echo "Added nodeSelector $NODE_SELECTOR_KEY: $NODE_SELECTOR_VALUE to deployment $DEPLOYMENT"
-  else
-    echo "nodeSelector $NODE_SELECTOR_KEY: $NODE_SELECTOR_VALUE already exists in deployment $DEPLOYMENT, skipping..."
-  fi
-done
-
-
-
-LABEL_KEY="drp"
-LABEL_VALUE="true"
-
-# Iterate through all nodes in the cluster
-for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  # Check if the label already exists on the node
-  EXISTS=$(kubectl get node $NODE -o jsonpath="{.metadata.labels['$LABEL_KEY']}" 2>/dev/null)
-
-  if [ "$EXISTS" != "$LABEL_VALUE" ]; then
-    # Add the label if it does not exist
-    kubectl label nodes $NODE $LABEL_KEY=$LABEL_VALUE --overwrite
-    echo "Added label $LABEL_KEY=$LABEL_VALUE to node $NODE"
-  else
-    echo "Label $LABEL_KEY=$LABEL_VALUE already exists on node $NODE, skipping..."
-  fi
-done
-
-ZONE=<your-zone>
-
-# Label key to remove
-LABEL_KEY="drp"
-
-# Iterate through all nodes in the specified zone
-for NODE in $(kubectl get nodes -o json | jq -r '.items[] | select(.metadata.labels["failure-domain.beta.kubernetes.io/zone"] == "'$ZONE'") | .metadata.name'); do
-  # Check if the label already exists on the node
-  EXISTS=$(kubectl get node $NODE -o jsonpath="{.metadata.labels['$LABEL_KEY']}" 2>/dev/null)
-
-  if [ "$EXISTS" == "true" ]; then
-    # Remove the label if it exists
-    kubectl label node $NODE $LABEL_KEY-
-    echo "Removed label $LABEL_KEY from node $NODE"
-  else
-    echo "Label $LABEL_KEY does not exist on node $NODE, skipping..."
-  fi
-done
-
-
-PODS=$(kubectl get pods --all-namespaces -o json)
-
-# Iterate through each pod and find the zone of the node it is running on
-echo -e "NAMESPACE\tPOD NAME\tNODE\tZONE"
-echo "-----------------------------------------------------"
-
-echo "$PODS" | jq -r '.items[] | "\(.metadata.namespace)\t\(.metadata.name)\t\(.spec.nodeName)\t\(.spec.nodeName | @sh)"' | while read -r NAMESPACE POD NODE _; do
-  ZONE=$(kubectl get node "$NODE" -o jsonpath='{.metadata.labels.failure-domain\.beta\.kubernetes\.io/zone}' 2>/dev/null)
-  echo -e "$NAMESPACE\t$POD\t$NODE\t$ZONE"
-done
-
-
-if [ -n "$LogPathUsr" ]; then
-    # Clean User entered string by removing trailing slash (if any)
-    LogPath="${LogPathUsr%/}"
-
-    # Make sure the log directory exists, create it if it doesn't
-    if [ ! -d "$LogPath" ]; then
-        mkdir -p "$LogPath"
-    fi
-
-    # Create a log file with a timestamp in the format "Log-Man_YYYY-MM-DD_HH-MM-SS.log"
-    LogFile="Log-Man_$(date +%Y-%m-%d_%H-%M-%S).log"
-    Log="$LogPath/$LogFile"
-
-    # Check if the log file already exists, if it does, clear its contents
-    if [ -f "$Log" ]; then
-        > "$Log"
-    fi
-fi
-
-
-#!/bin/bash
-
-echo "Counting pods by zone for each deployment:"
-echo "------------------------------------------"
-
-# Initialize an associative array to count pods by deployment and zone
-declare -A deployment_zone_count
-
-# Get all pods across all namespaces
-pods=$(kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"|"}{.metadata.labels.app}{"|"}{.metadata.name}{"|"}{.spec.nodeName}{"|"}{.metadata.labels.failure-domain\.beta\.kubernetes\.io/zone}{"\n"}{end}')
-
-# Loop over each pod
-for pod in $pods
-do
-  # Extract the namespace, deployment name (from the app label), pod name, node name, and zone
-  namespace=$(echo $pod | cut -d'|' -f1)
-  deployment_name=$(echo $pod | cut -d'|' -f2)
-  pod_name=$(echo $pod | cut -d'|' -f3)
-  node_name=$(echo $pod | cut -d'|' -f4)
-  zone=$(echo $pod | cut -d'|' -f5)
-  
-  # If zone is empty, label it as "unknown"
-  if [ -z "$zone" ]; then
-    zone="unknown"
-  fi
-  
-  # Skip pods that don't belong to a deployment (missing app label)
-  if [ -z "$deployment_name" ]; then
-    continue
-  fi
-  
-  # Create a unique key for the deployment and zone combination
-  key="$namespace|$deployment_name|$zone"
-  
-  # Increment the counter for the respective deployment and zone
-  deployment_zone_count["$key"]=$((deployment_zone_count["$key"] + 1))
-done
-
-# Output the count for each deployment and zone
-for key in "${!deployment_zone_count[@]}"
-do
-  # Extract the namespace, deployment name, and zone from the key
-  namespace=$(echo $key | cut -d'|' -f1)
-  deployment_name=$(echo $key | cut -d'|' -f2)
-  zone=$(echo $key | cut -d'|' -f3)
-  
-  # Output the results
-  echo "Deployment: $deployment_name (Namespace: $namespace) - Zone: $zone - Pod count: ${deployment_zone_count[$key]}"
-done
-
-echo "------------------------------------------"
-
-
----
-
-
-
-
-
-
-
-#!/bin/bash
-
-echo "Counting pods by zone for each deployment:"
-echo "------------------------------------------"
-
-# Initialize an associative array to count pods by deployment and zone
-declare -A deployment_zone_count
-
-# Get all pods across all namespaces
-pods=$(kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"|"}{.metadata.labels.app}{"|"}{.metadata.name}{"|"}{.spec.nodeName}{"\n"}{end}')
-
-# Loop over each pod
-for pod in $pods
-do
-  # Extract the namespace, deployment name (from the app label), pod name, and node name
-  namespace=$(echo $pod | cut -d'|' -f1)
-  deployment_name=$(echo $pod | cut -d'|' -f2)
-  pod_name=$(echo $pod | cut -d'|' -f3)
-  node_name=$(echo $pod | cut -d'|' -f4)
-  
-  # Skip pods that don't belong to a deployment (missing app label)
-  if [ -z "$deployment_name" ]; then
-    continue
-  fi
-
-  # Get the zone for the node running the pod (via node label)
-  zone=$(kubectl get node $node_name -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')
-  
-  # If zone is empty, label it as "unknown"
-  if [ -z "$zone" ]; then
-    zone="unknown"
-  fi
-  
-  # Create a unique key for the deployment and zone combination
-  key="$namespace|$deployment_name|$zone"
-  
-  # Increment the counter for the respective deployment and zone
-  deployment_zone_count["$key"]=$((deployment_zone_count["$key"] + 1))
-done
-
-# Output the count for each deployment and zone
-for key in "${!deployment_zone_count[@]}"
-do
-  # Extract the namespace, deployment name, and zone from the key
-  namespace=$(echo $key | cut -d'|' -f1)
-  deployment_name=$(echo $key | cut -d'|' -f2)
-  zone=$(echo $key | cut -d'|' -f3)
-  
-  # Output the results
-  echo "Deployment: $deployment_name (Namespace: $namespace) - Zone: $zone - Pod count: ${deployment_zone_count[$key]}"
-done
-
-echo "------------------------------------------"
-
-kubectl get pods -o=custom-columns="Pod:.metadata.name,Node:.spec.nodeName" --all-namespaces | while read pod node; do
-  zone=$(kubectl get node "$node" -o=jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')
-  echo "Pod: $pod, Node: $node, Zone: $zone"
-done
-
-
-
-
-kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" - "}{.metadata.labels.topology\.kubernetes\.io/zone}{"\n"}{end}'
-
-kubectl get pods -o=jsonpath='{range .items[*]}{"Pod: "}{.metadata.name}{"\tNode: "}{.spec.nodeName}{"\tZone: "}{.spec.nodeName | kubectl get node -o=jsonpath="{.metadata.labels['topology\.kubernetes\.io/zone']}" }{"\n"}{end}'
+// Helper function to get all inventory files from the dynamically referenced inventory folder
+def getInventoryFiles() {
+    def inventoryFiles = []
+    def files = new File("${env.WORKSPACE}/inventory").listFiles()
+    files.each { file ->
+        if (file.isFile()) {
+            inventoryFiles << file.getName()
+        }
+    }
+    return inventoryFiles.join('\n')
+}
