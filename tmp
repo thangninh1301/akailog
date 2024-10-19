@@ -1,27 +1,65 @@
 pipeline {
-    agent any
+    agent {
+        kubernetes {
+            label 'ansible-python-pod'
+            defaultContainer 'jnlp'
+            yaml """
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    some-label: ansible-python-pod
+spec:
+  containers:
+  - name: ansible
+    image: ansible/ansible-runner
+    command:
+    - cat
+    tty: true
+  - name: python
+    image: python:3.9
+    command:
+    - cat
+    tty: true
+"""
+        }
+    }
     environment {
-        // Define the path dynamically using $project Ansible variable
+        // Define the dynamic path to the inventory folder within the workspace
         INVENTORY_PATH = "${env.WORKSPACE}/inventory"
     }
-    parameters {
-        // Dynamically create a choice parameter by listing all files in the inventory folder
-        choice(name: 'INVENTORY_FILE', choices: getInventoryFiles(), description: 'Select inventory file')
-        choice(name: 'MODE', choices: ['Run Python Script', 'Run Ansible Playbook', 'Echo HelloWorld'], description: 'Select the mode to run')
-    }
+
+    // Define parameters upfront using properties
+    properties([
+        choice(
+            name: 'INVENTORY_FILE',
+            choices: getInventoryFiles(),
+            description: 'Select inventory file'
+        ),
+        choice(
+            name: 'MODE',
+            choices: ['Run Python Script', 'Run Ansible Playbook', 'Echo HelloWorld'],
+            description: 'Select the mode to run'
+        )
+    ])
+
     stages {
         stage('Run Task Based on Mode') {
             steps {
-                script {
-                    if (params.MODE == 'Run Python Script') {
-                        echo "Running Python Script"
-                        sh 'python3 /path/to/your/python_script.py'
-                    } else if (params.MODE == 'Run Ansible Playbook') {
-                        echo "Running Ansible Playbook with inventory: ${params.INVENTORY_FILE}"
-                        // Run the ansible-playbook command with the dynamic project variable
-                        sh "ansible-playbook /path/to/your/ansible/playbook.yml -i ${INVENTORY_PATH}/${params.INVENTORY_FILE}"
-                    } else if (params.MODE == 'Echo HelloWorld') {
-                        echo "HelloWorld"
+                container('ansible') {
+                    script {
+                        if (params.MODE == 'Run Python Script') {
+                            container('python') {
+                                echo "Running Python Script"
+                                sh 'python3 /path/to/your/python_script.py'
+                            }
+                        } else if (params.MODE == 'Run Ansible Playbook') {
+                            echo "Running Ansible Playbook with inventory: ${params.INVENTORY_FILE}"
+                            // Use ansible-playbook inside the Ansible container
+                            sh "ansible-playbook /path/to/your/ansible/playbook.yml -i ${INVENTORY_PATH}/${params.INVENTORY_FILE}"
+                        } else if (params.MODE == 'Echo HelloWorld') {
+                            echo "HelloWorld"
+                        }
                     }
                 }
             }
