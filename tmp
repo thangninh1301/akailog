@@ -24,7 +24,7 @@ pipeline {
         INVENTORY_PATH = "${env.WORKSPACE}/inventory"
     }
 
-    // Define parameters upfront using the specific format
+    // Define parameters upfront using properties(parameters)
     properties([
         parameters([
             [
