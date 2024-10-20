@@ -10,6 +10,10 @@
     nexus_username: "your_username"
     nexus_password: "your_password"
   tasks:
+    - name: Debug temporary directory
+      debug:
+        msg: "Temporary directory is set to: {{ temp_dir }}"
+
     - name: Ensure the temporary directory exists
       file:
         path: "{{ temp_dir }}"
@@ -55,6 +59,21 @@
         content: |
           IP Address, Domain, Ping Status, HTTPS Status
           {{ ip_address }}, {{ domain_to_check }}, {{ ping_status }}, {{ https_status | default('Not Checked') }}
+
+    - name: Check if CSV file exists
+      stat:
+        path: "{{ csv_file_path }}"
+      register: csv_file_stat
+
+    - name: Print CSV file contents if it exists
+      command: cat {{ csv_file_path }}
+      when: csv_file_stat.stat.exists
+      register: csv_file_contents
+
+    - name: Debug CSV file contents
+      debug:
+        msg: "{{ csv_file_contents.stdout }}"
+      when: csv_file_stat.stat.exists
 
     - name: Upload CSV file to Nexus
       uri:
