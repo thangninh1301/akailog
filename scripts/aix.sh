@@ -1,22 +1,15 @@
 ---
-- name: Ping hosts and check HTTPS connectivity, generate CSV with results
-  hosts: all  # Target all hosts in the inventory
+- name: Check ping and HTTPS connectivity for inventory hosts and generate a single CSV report
+  hosts: all  # Run on all hosts in the inventory
   gather_facts: no
   vars:
-    temp_dir: "{{ ansible_env.TEMP | default(ansible_env.TMPDIR | default('/tmp')) }}"
-    csv_file_path: "{{ temp_dir }}/ping_https_result_{{ lookup('pipe', 'date +%Y%m%d') }}.csv"
+    csv_file_path: "/tmp/ping_https_result_{{ lookup('pipe', 'date +%Y%m%d') }}.csv"  # Set the CSV file path
     nexus_url: "http://nexus.example.com/repository/your-repo/"
     nexus_username: "your_username"
     nexus_password: "your_password"
-    results: []  # Initialize an empty list for results
+    results: []  # Initialize an empty list to collect results
 
   tasks:
-    - name: Ensure the temporary directory exists
-      file:
-        path: "{{ temp_dir }}"
-        state: directory
-        mode: '0755'  # Set appropriate permissions
-
     - name: Ping the host
       shell: "ping -c 2 {{ inventory_hostname }} > /dev/null 2>&1"
       register: ping_result
@@ -45,7 +38,10 @@
       set_fact:
         results: "{{ results + [{'ip_address': inventory_hostname, 'ping_status': ping_status, 'https_status': https_status | default('Not Checked')} ] }}"
 
-    - name: Generate CSV file with ping and HTTPS check results
+    - name: Wait for all tasks to complete (important to ensure all results are collected)
+      meta: flush_handlers
+
+    - name: Generate CSV file with results
       copy:
         dest: "{{ csv_file_path }}"
         content: |
@@ -59,16 +55,6 @@
       stat:
         path: "{{ csv_file_path }}"
       register: csv_file_stat
-
-    - name: Print CSV file contents if it exists
-      command: cat {{ csv_file_path }}
-      when: csv_file_stat.stat.exists
-      register: csv_file_contents
-
-    - name: Debug CSV file contents
-      debug:
-        msg: "{{ csv_file_contents.stdout }}"
-      when: csv_file_stat.stat.exists
 
     - name: Upload CSV file to Nexus
       uri:
