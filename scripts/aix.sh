@@ -1,42 +1,34 @@
 ---
-- name: Check ping connectivity for Windows, RHEL, and AIX hosts
-  hosts: all
+- name: Ping domains and generate CSV with results
+  hosts: localhost
   gather_facts: no
   vars:
+    domains_to_ping:  # List of domains to ping, passed in as a variable or from extra vars
+      - example.com
+      - google.com
+      - nonexistingdomain.com
     csv_file_path: "/tmp/ping_result_{{ lookup('pipe', 'date +%Y%m%d') }}.csv"
     nexus_url: "http://nexus.example.com/repository/your-repo/"
     nexus_username: "your_username"
     nexus_password: "your_password"
   tasks:
-    - name: Ping Windows hosts
-      win_ping:
-      when: ansible_connection == "winrm"
-      register: win_ping_result
+    - name: Ping each domain (Linux/Unix)
+      shell: "ping -c 2 {{ item }} > /dev/null 2>&1"
+      register: ping_result
+      with_items: "{{ domains_to_ping }}"
+      ignore_errors: yes
 
-    - name: Ping Linux (RHEL/AIX) hosts
-      ping:
-      when: ansible_connection == "ssh"
-      register: linux_ping_result
-
-    - name: Add successful Windows ping results to list
+    - name: Add successful pings to list
       set_fact:
-        successful_pings: "{{ successful_pings | default([]) + [ansible_host] }}"
-      when: win_ping_result.ping == "pong"
+        successful_pings: "{{ successful_pings | default([]) + [item.item] }}"
+      when: ping_result.results[item.ansible_loop_var].rc == 0
+      with_items: "{{ ping_result.results }}"
 
-    - name: Add failed Windows ping results to list
+    - name: Add failed pings to list
       set_fact:
-        failed_pings: "{{ failed_pings | default([]) + [ansible_host] }}"
-      when: win_ping_result.ping != "pong"
-
-    - name: Add successful Linux ping results to list
-      set_fact:
-        successful_pings: "{{ successful_pings | default([]) + [ansible_host] }}"
-      when: linux_ping_result.ping == "pong"
-
-    - name: Add failed Linux ping results to list
-      set_fact:
-        failed_pings: "{{ failed_pings | default([]) + [ansible_host] }}"
-      when: linux_ping_result.ping != "pong"
+        failed_pings: "{{ failed_pings | default([]) + [item.item] }}"
+      when: ping_result.results[item.ansible_loop_var].rc != 0
+      with_items: "{{ ping_result.results }}"
 
     - name: Ensure /tmp/ directory exists for the CSV file
       file:
@@ -47,10 +39,10 @@
       copy:
         dest: "{{ csv_file_path }}"
         content: |
-          IP, Status
-          {% for ip in successful_pings %}{{ ip }}, Success
+          Domain, Status
+          {% for domain in successful_pings %}{{ domain }}, Success
           {% endfor %}
-          {% for ip in failed_pings %}{{ ip }}, Fail
+          {% for domain in failed_pings %}{{ domain }}, Fail
           {% endfor %}
 
     - name: Upload CSV file to Nexus
