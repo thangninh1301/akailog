@@ -1,64 +1,39 @@
-properties([
-        parameters([
-            [
-                $class: 'ChoiceParameter',
-                choiceType: 'PT_SINGLE_SELECT',
-                name: 'ENVIRONMENT',
+[
+            $class: 'ChoiceParameter',
+            choiceType: 'PT_MULTI_SELECT', // Allow multiple selections for inventory files
+            name: 'INVENTORY_FILE',
+            script: [
+                $class: 'GroovyScript',
                 script: [
-                    $class: 'GroovyScript',
-                    script: [
-                        classpath: [],
-                        sandbox: true,
-                        script: '''
-                        return [
-                            "PROD - DC2",
-                            "PROD - DC1",
-                            "PROD - DR"
-                        ]
-                        '''
-                    ]
-                ]
-            ],
-            [
-                $class: 'ChoiceParameter',
-                choiceType: 'PT_SINGLE_SELECT',
-                name: 'INVENTORY_FILE',
-                script: [
-                    $class: 'GroovyScript',
-                    script: [
-                        classpath: [],
-                        sandbox: true,
-                        script: '''
-                        def inventoryFiles = []
-                        def files = new File("${env.WORKSPACE}/inventory").listFiles()
-                        files.each { file ->
-                            if (file.isFile()) {
-                                inventoryFiles.add(file.getName())
-                            }
+                    classpath: [],
+                    sandbox: true,
+                    script: '''
+                    // Debugging step: print workspace path and files
+                    def workspace = new File("${env.WORKSPACE}/inventory")
+                    println "Workspace path: ${workspace.getAbsolutePath()}"
+                    
+                    if (!workspace.exists()) {
+                        println "Inventory folder does not exist"
+                        return ["Inventory folder not found"]
+                    }
+
+                    def inventoryFiles = []
+                    def files = workspace.listFiles()
+
+                    if (files == null || files.size() == 0) {
+                        println "No files found in the inventory folder"
+                        return ["No files found in inventory"]
+                    }
+                    
+                    files.each { file ->
+                        if (file.isFile()) {
+                            println "Found inventory file: ${file.getName()}"
+                            inventoryFiles.add(file.getName())
                         }
-                        return inventoryFiles
-                        '''
-                    ]
-                ]
-            ],
-            [
-                $class: 'ChoiceParameter',
-                choiceType: 'PT_SINGLE_SELECT',
-                name: 'MODE',
-                script: [
-                    $class: 'GroovyScript',
-                    script: [
-                        classpath: [],
-                        sandbox: true,
-                        script: '''
-                        return [
-                            "Run Python Script",
-                            "Run Ansible Playbook",
-                            "Echo HelloWorld"
-                        ]
-                        '''
-                    ]
+                    }
+
+                    return inventoryFiles
+                    '''
                 ]
             ]
-        ])
-    ])
+        ]
