@@ -1,113 +1,76 @@
-# Log cleanup job for {{ job_name }}
-$leaderPIC = "{{ leader_PIC }}"
-$timeToRun = "{{ time_to_run }}"
-$host = "{{ ansible_host }}"
+---
+name: Create jobs for Linux, AIX, and Windows hosts
+hosts: all
+become: yes
+tasks:
 
-# Paths to the log manager scripts
-$logManagerScript = "{{ path_job }}\scripts\windows-log-manager.ps1"
-$logRotationScript = "{{ path_job }}\scripts\windows-log-rotation.ps1"
+  # Block for Linux hosts (RHEL)
+  - name: "Push base script job on Linux hosts"
+    block:
+      - name: "Push base script from Ansible to RHEL"
+        copy:
+          src: scripts/
+          dest: "{{ path_job }}/scripts"
+        when: ansible_os_family == "RedHat" and ansible_connection == 'ssh'
 
-# Ensure the log manager scripts exist
-if (-Not (Test-Path -Path $logManagerScript)) {
-    Write-Error "Error: Log manager script not found at $logManagerScript"
-    Exit 1
-}
+      - name: "Ensure set permissions of all script files to 755 (Linux)"
+        file:
+          path: "{{ path_job }}/scripts"
+          state: directory
+          mode: '0755'
+          recurse: yes
+        when: ansible_os_family == "RedHat" and ansible_connection == 'ssh'
 
-if (-Not (Test-Path -Path $logRotationScript)) {
-    Write-Error "Error: Log rotation script not found at $logRotationScript"
-    Exit 1
-}
+      - name: "Push Linux log manager source script"
+        template:
+          src: templates/source_linux.j2
+          dest: "{{ path_job }}/source_linux.sh"
+          mode: '0755'
+        when: ansible_os_family == "RedHat" and ansible_connection == 'ssh'
 
-# Ensure that result file exists
-$resultFile = "result_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').csv"
-$resultPath = ".\$resultFile"
+  # Block for AIX hosts
+  - name: "Push base script job on AIX hosts"
+    block:
+      - name: "Push base script from Ansible to AIX"
+        copy:
+          src: scripts/
+          dest: "{{ path_job }}/scripts"
+        when: ansible_os_family == "AIX" and ansible_connection == 'ssh'
 
-# Check if the result path file already exists, if it does, clear its contents, and add header to CSV
-"pre_size,cleaned_size,post_size,log_rotation_size,log_rotation_first_time,log_rotation_last_time,pic,job_name,service" | Out-File -FilePath $resultPath -Force
+      - name: "Ensure set permissions of all script files to 755 (AIX)"
+        file:
+          path: "{{ path_job }}/scripts"
+          state: directory
+          mode: '0755'
+          recurse: yes
+        when: ansible_os_family == "AIX" and ansible_connection == 'ssh'
 
-{% for service in services %}
-# Service: {{ service.name }}
-$servicePath = "{{ service.path }}"
+      - name: "Push AIX log manager source script"
+        template:
+          src: templates/source_aix.j2
+          dest: "{{ path_job }}/source_aix.sh"
+          mode: '0755'
+        when: ansible_os_family == "AIX" and ansible_connection == 'ssh'
 
-{% if service.retention_rate is defined %}
-$retentionRate = {{ service.retention_rate }}
-Write-Host "Retention rate: $retentionRate days"
-{% endif %}
+  # Block for Windows hosts
+  - name: "Push base script job on Windows hosts"
+    block:
+      - name: "Push base script from Ansible to Windows"
+        win_copy:
+          src: scripts/
+          dest: "{{ path_job }}\scripts"
+        when: ansible_connection == 'winrm'
 
-{% if service.log_extension is defined %}
-$logExtension = "{{ service.log_extension }}"
-Write-Host "Log Extension: $logExtension"
-{% endif %}
+      - name: "Ensure set permissions of all script files (Windows)"
+        win_acl:
+          path: "{{ path_job }}\scripts"
+          rights:
+            - perm: 'full'
+              principal: 'Everyone'
+        when: ansible_connection == 'winrm'
 
-{% if service.backup_path is defined %}
-$backupEnabled = $true
-$backupRetentionRate = {{ service.backup_retention_rate }}
-Write-Host "Backup Enabled: Yes"
-Write-Host "Backup Retention Rate: $backupRetentionRate days"
-
-{% if service.backup_path is defined %}
-$backupPath = "{{ service.backup_path }}"
-{% else %}
-$backupPath = "$servicePath\backup"
-{% endif %}
-
-Write-Host "Backup Path: $backupPath"
-{% endif %}
-
-$cleanType = "{{ service.clean_type }}"
-Write-Host "Clean Type: $cleanType"
-
-if ($cleanType -eq 'retention') {
-    # Call the windows-log-manager script for {{ service.name }}
-    & $logManagerScript `
-        -ServicePath "$servicePath" `
-        -ResultPath $resultPath `
-        {% if service.retention_rate is defined %} -RetentionRate $retentionRate {% endif %} `
-        {% if service.log_extension is defined %} -LogExtension "$logExtension" {% endif %} `
-        {% if service.backup_retention_rate is defined %} -BackupRetentionRate $backupRetentionRate {% endif %} `
-        {% if service.backup_path is defined %} -BackupPath "$backupPath" {% endif %}
-
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Error: Log cleanup (retention) failed for {{ service.name }}"
-    } else {
-        Write-Host "Log cleanup (retention) succeeded for {{ service.name }}"
-    }
-} elseif ($cleanType -eq 'rotation') {
-    # Call the log-rotation script for {{ service.name }}
-    & $logRotationScript `
-        -ServicePath "$servicePath" `
-        -ResultPath $resultPath
-
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Error: Log rotation failed for {{ service.name }}"
-    } else {
-        Write-Host "Log rotation succeeded for {{ service.name }}"
-    }
-}
-
-# Append information to the result CSV
-$csvEntry = ",$leaderPIC,{{ job_name }},{{ service.name }}"
-$csvEntry | Out-File -FilePath $resultPath -Append
-
-{% endfor %}
-
-Write-Host "Log cleanup and rotation tasks completed for {{ job_name }} on {{ ansible_host }}"
-
-#------------------------------------------
-Write-Host "The $resultFile has been pushed to Nexus"
-
-$NexusUrl = "https://nexus-tcb.techcombank.com.vn/#browse/browse:raw-report-hosted"
-
-Write-Host "Attempting to upload $resultFile to Nexus..."
-
-# Try uploading the file using Invoke-RestMethod
-$response = Invoke-RestMethod -Uri "$NexusUrl/$resultFile" -Method Put -InFile $resultPath -ContentType "text/csv"
-
-# Check if the response indicates success (200 or 201)
-if ($response.StatusCode -eq 200 -or $response.StatusCode -eq 201) {
-    Write-Host "File $resultFile successfully uploaded to Nexus."
-} else {
-    # If the upload fails, log an error and return failure status
-    Write-Error "Failed to upload $resultFile. HTTP Status: $($response.StatusCode)"
-    Exit 1
-}
+      - name: "Push Windows log manager source script"
+        template:
+          src: templates/source_windows.j2
+          dest: "{{ path_job }}\source_windows.ps1"
+        when: ansible_connection == 'winrm'
