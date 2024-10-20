@@ -69,3 +69,14 @@ printf "%s" "$current_content" > "$result_path"
 
 # Append the desired content to the file
 echo ",{{ leader_PIC }},{{ job_name }},{{ service.name }}" >> "$result_path"
+
+
+  - name: Write results to CSV file using echo
+    shell: |
+      echo "IP Address,Hostname,Ping Status,HTTPS Status" > "{{ csv_file_path }}"
+      {% for result in results %}
+      echo "{{ result.ip_address }},{{ result.hostname }},{{ result.ping_status }},{{ result.https_status }}" >> "{{ csv_file_path }}"
+      {% endfor %}
+    when: results | length > 0
+    delegate_to: localhost  # Ensure the file is created on the Ansible control machine
+
