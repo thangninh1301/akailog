@@ -1,20 +1,64 @@
-environment {
-        // Define the dynamic path to the inventory folder within the workspace
-        INVENTORY_PATH = "${env.WORKSPACE}/inventory"
-    }
-
-    // Define parameters upfront using properties(parameters)
-    properties([
+properties([
         parameters([
-            choice(
+            [
+                $class: 'ChoiceParameter',
+                choiceType: 'PT_SINGLE_SELECT',
+                name: 'ENVIRONMENT',
+                script: [
+                    $class: 'GroovyScript',
+                    script: [
+                        classpath: [],
+                        sandbox: true,
+                        script: '''
+                        return [
+                            "PROD - DC2",
+                            "PROD - DC1",
+                            "PROD - DR"
+                        ]
+                        '''
+                    ]
+                ]
+            ],
+            [
+                $class: 'ChoiceParameter',
+                choiceType: 'PT_SINGLE_SELECT',
                 name: 'INVENTORY_FILE',
-                choices: getInventoryFiles(),
-                description: 'Select inventory file'
-            ),
-            choice(
+                script: [
+                    $class: 'GroovyScript',
+                    script: [
+                        classpath: [],
+                        sandbox: true,
+                        script: '''
+                        def inventoryFiles = []
+                        def files = new File("${env.WORKSPACE}/inventory").listFiles()
+                        files.each { file ->
+                            if (file.isFile()) {
+                                inventoryFiles.add(file.getName())
+                            }
+                        }
+                        return inventoryFiles
+                        '''
+                    ]
+                ]
+            ],
+            [
+                $class: 'ChoiceParameter',
+                choiceType: 'PT_SINGLE_SELECT',
                 name: 'MODE',
-                choices: ['Run Python Script', 'Run Ansible Playbook', 'Echo HelloWorld'],
-                description: 'Select the mode to run'
-            )
+                script: [
+                    $class: 'GroovyScript',
+                    script: [
+                        classpath: [],
+                        sandbox: true,
+                        script: '''
+                        return [
+                            "Run Python Script",
+                            "Run Ansible Playbook",
+                            "Echo HelloWorld"
+                        ]
+                        '''
+                    ]
+                ]
+            ]
         ])
     ])
