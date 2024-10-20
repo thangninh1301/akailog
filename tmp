@@ -1,39 +1,15 @@
-[
-            $class: 'ChoiceParameter',
-            choiceType: 'PT_MULTI_SELECT', // Allow multiple selections for inventory files
-            name: 'INVENTORY_FILE',
-            script: [
-                $class: 'GroovyScript',
-                script: [
-                    classpath: [],
-                    sandbox: true,
-                    script: '''
-                    // Debugging step: print workspace path and files
-                    def workspace = new File("${env.WORKSPACE}/inventory")
-                    println "Workspace path: ${workspace.getAbsolutePath()}"
-                    
-                    if (!workspace.exists()) {
-                        println "Inventory folder does not exist"
-                        return ["Inventory folder not found"]
+stage('Run Task Based on Mode') {
+            steps {
+                script {
+                    if (params.MODE.contains('Run Python Script')) {
+                        echo "1" // Replace with actual script logic if needed
                     }
-
-                    def inventoryFiles = []
-                    def files = workspace.listFiles()
-
-                    if (files == null || files.size() == 0) {
-                        println "No files found in the inventory folder"
-                        return ["No files found in inventory"]
+                    if (params.MODE.contains('Run Ansible Playbook')) {
+                        echo "2" // Replace with ansible execution if needed
                     }
-                    
-                    files.each { file ->
-                        if (file.isFile()) {
-                            println "Found inventory file: ${file.getName()}"
-                            inventoryFiles.add(file.getName())
-                        }
+                    if (params.MODE.contains('Echo HelloWorld')) {
+                        echo "3" // Echo HelloWorld as per the mode
                     }
-
-                    return inventoryFiles
-                    '''
-                ]
-            ]
-        ]
+                }
+            }
+        }
