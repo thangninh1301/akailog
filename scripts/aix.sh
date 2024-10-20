@@ -1,123 +1,66 @@
-label = "worker-${UUID.randomUUID()}"
+---
+- name: Check ping connectivity for Windows, RHEL, and AIX hosts
+  hosts: all
+  gather_facts: no
+  vars:
+    csv_file_path: "/tmp/ping_result_{{ lookup('pipe', 'date +%Y%m%d') }}.csv"
+    nexus_url: "http://nexus.example.com/repository/your-repo/"
+    nexus_username: "your_username"
+    nexus_password: "your_password"
+  tasks:
+    - name: Ping Windows hosts
+      win_ping:
+      when: ansible_connection == "winrm"
+      register: win_ping_result
 
-// Define parameters upfront using properties(parameters)
-properties([
-parameters([
-[
-$class: 'ChoiceParameter',
-choiceType: 'PT_MULTI_SELECT', // Allow multiple selections for inventory files
-name: 'INVENTORY_FILE',
-script: [
-$class: 'GroovyScript',
-script: [
-classpath: [],
-sandbox: true,
-script: '''
-                    // Debugging step: print workspace path and files
-                    def workspace = new File("${env.WORKSPACE}/inventory")
-                    println "Workspace path: ${workspace.getAbsolutePath()}"
+    - name: Ping Linux (RHEL/AIX) hosts
+      ping:
+      when: ansible_connection == "ssh"
+      register: linux_ping_result
 
-                    if (!workspace.exists()) {
-                        println "Inventory folder does not exist"
-                        return ["Inventory folder not found"]
-                    }
+    - name: Add successful Windows ping results to list
+      set_fact:
+        successful_pings: "{{ successful_pings | default([]) + [ansible_host] }}"
+      when: win_ping_result.ping == "pong"
 
-                    def inventoryFiles = []
-                    def files = workspace.listFiles()
+    - name: Add failed Windows ping results to list
+      set_fact:
+        failed_pings: "{{ failed_pings | default([]) + [ansible_host] }}"
+      when: win_ping_result.ping != "pong"
 
-                    if (files == null || files.size() == 0) {
-                        println "No files found in the inventory folder"
-                        return ["No files found in inventory"]
-                    }
+    - name: Add successful Linux ping results to list
+      set_fact:
+        successful_pings: "{{ successful_pings | default([]) + [ansible_host] }}"
+      when: linux_ping_result.ping == "pong"
 
-                    files.each { file ->
-                        if (file.isFile()) {
-                            println "Found inventory file: ${file.getName()}"
-                            inventoryFiles.add(file.getName())
-                        }
-                    }
+    - name: Add failed Linux ping results to list
+      set_fact:
+        failed_pings: "{{ failed_pings | default([]) + [ansible_host] }}"
+      when: linux_ping_result.ping != "pong"
 
-                    return inventoryFiles
-                    '''
-                ]
-            ]
-        ],
-        [
-            $class: 'ChoiceParameter',
-            choiceType: 'PT_SINGLE_SELECT',
-            name: 'MODE',
-            script: [
-                $class: 'GroovyScript',
-                script: [
-                    classpath: [],
-                    sandbox: true,
-                    script: '''
-                    return [
-                        "Python-script",
-                        "Playbook",
-                        "ping"
-                    ]
-                    '''
-                ]
-            ]
-        ]
-    ])
-])
+    - name: Ensure /tmp/ directory exists for the CSV file
+      file:
+        path: /tmp/
+        state: directory
 
-def dockerImage = ""
-if (params.MODE == 'Python-script') {
-    dockerImage = 'dockerhub-dev.techcombank.com.vn/laudio/pyodbc'
-} else {
-    dockerImage = 'ansible'
-}
+    - name: Generate CSV file with ping results
+      copy:
+        dest: "{{ csv_file_path }}"
+        content: |
+          IP, Status
+          {% for ip in successful_pings %}{{ ip }}, Success
+          {% endfor %}
+          {% for ip in failed_pings %}{{ ip }}, Fail
+          {% endfor %}
 
-podTemplate(
-label: label,
-cloud: 'dso-workload',
-imagePullSecrets: ['nexus-dso-cred'],
-containers: [
-containerTemplate(
-name: 'worker-container',
-image: dockerImage,
-command: '',
-ttyEnabled: true
-)
-]
-) {
-node(label) {
-    container('worker-container') {
-        stage("Checkout SCM"){
-            cleanWs()
-            checkout scm
-        }
-
-        stage('prepare') {
-            if (params.MODE.contains('ping')) {
-                echo "1" // Replace with actual script logic if needed
-            }
-            if (params.MODE.contains('Python-script')) {
-                sh 'python3 --version'
-                sh 'pip3 config set global.index-url https://nexus-dso.techcombank.com.vn/repository/pypi/simple'
-                sh 'pip3 install --user -U -i https://nexus-dso.techcombank.com.vn/repository/pypi/simple requests'
-                sh 'pip3 install --user -U -i https://nexus-dso.techcombank.com.vn/repository/pypi/simple pandas'
-                sh 'python3 ETL.py'
-            }
-            if (params.MODE.contains('Playbook')) {
-                echo "3" // Echo HelloWorld as per the mode
-            }
-         }
-
-    }
-}
-}
-
-def getInventoryFiles() {
-    def inventoryFiles = []
-    def files = new File("${env.WORKSPACE}/inventory").listFiles()
-    files.each { file ->
-        if (file.isFile()) {
-            inventoryFiles << file.getName()
-        }
-    }
-    return inventoryFiles.join('\n')
-}
+    - name: Upload CSV file to Nexus
+      uri:
+        url: "{{ nexus_url }}ping_result_{{ lookup('pipe', 'date +%Y%m%d') }}.csv"
+        method: PUT
+        user: "{{ nexus_username }}"
+        password: "{{ nexus_password }}"
+        src: "{{ csv_file_path }}"
+        headers:
+          Content-Type: "text/csv"
+        force_basic_auth: yes
+      when: successful_pings is defined or failed_pings is defined
