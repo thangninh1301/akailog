@@ -1,76 +1,123 @@
----
-name: Create jobs for Linux, AIX, and Windows hosts
-hosts: all
-become: yes
-tasks:
+label = "worker-${UUID.randomUUID()}"
 
-  # Block for Linux hosts (RHEL)
-  - name: "Push base script job on Linux hosts"
-    block:
-      - name: "Push base script from Ansible to RHEL"
-        copy:
-          src: scripts/
-          dest: "{{ path_job }}/scripts"
-        when: ansible_os_family == "RedHat" and ansible_connection == 'ssh'
+// Define parameters upfront using properties(parameters)
+properties([
+parameters([
+[
+$class: 'ChoiceParameter',
+choiceType: 'PT_MULTI_SELECT', // Allow multiple selections for inventory files
+name: 'INVENTORY_FILE',
+script: [
+$class: 'GroovyScript',
+script: [
+classpath: [],
+sandbox: true,
+script: '''
+                    // Debugging step: print workspace path and files
+                    def workspace = new File("${env.WORKSPACE}/inventory")
+                    println "Workspace path: ${workspace.getAbsolutePath()}"
 
-      - name: "Ensure set permissions of all script files to 755 (Linux)"
-        file:
-          path: "{{ path_job }}/scripts"
-          state: directory
-          mode: '0755'
-          recurse: yes
-        when: ansible_os_family == "RedHat" and ansible_connection == 'ssh'
+                    if (!workspace.exists()) {
+                        println "Inventory folder does not exist"
+                        return ["Inventory folder not found"]
+                    }
 
-      - name: "Push Linux log manager source script"
-        template:
-          src: templates/source_linux.j2
-          dest: "{{ path_job }}/source_linux.sh"
-          mode: '0755'
-        when: ansible_os_family == "RedHat" and ansible_connection == 'ssh'
+                    def inventoryFiles = []
+                    def files = workspace.listFiles()
 
-  # Block for AIX hosts
-  - name: "Push base script job on AIX hosts"
-    block:
-      - name: "Push base script from Ansible to AIX"
-        copy:
-          src: scripts/
-          dest: "{{ path_job }}/scripts"
-        when: ansible_os_family == "AIX" and ansible_connection == 'ssh'
+                    if (files == null || files.size() == 0) {
+                        println "No files found in the inventory folder"
+                        return ["No files found in inventory"]
+                    }
 
-      - name: "Ensure set permissions of all script files to 755 (AIX)"
-        file:
-          path: "{{ path_job }}/scripts"
-          state: directory
-          mode: '0755'
-          recurse: yes
-        when: ansible_os_family == "AIX" and ansible_connection == 'ssh'
+                    files.each { file ->
+                        if (file.isFile()) {
+                            println "Found inventory file: ${file.getName()}"
+                            inventoryFiles.add(file.getName())
+                        }
+                    }
 
-      - name: "Push AIX log manager source script"
-        template:
-          src: templates/source_aix.j2
-          dest: "{{ path_job }}/source_aix.sh"
-          mode: '0755'
-        when: ansible_os_family == "AIX" and ansible_connection == 'ssh'
+                    return inventoryFiles
+                    '''
+                ]
+            ]
+        ],
+        [
+            $class: 'ChoiceParameter',
+            choiceType: 'PT_SINGLE_SELECT',
+            name: 'MODE',
+            script: [
+                $class: 'GroovyScript',
+                script: [
+                    classpath: [],
+                    sandbox: true,
+                    script: '''
+                    return [
+                        "Python-script",
+                        "Playbook",
+                        "ping"
+                    ]
+                    '''
+                ]
+            ]
+        ]
+    ])
+])
 
-  # Block for Windows hosts
-  - name: "Push base script job on Windows hosts"
-    block:
-      - name: "Push base script from Ansible to Windows"
-        win_copy:
-          src: scripts/
-          dest: "{{ path_job }}\scripts"
-        when: ansible_connection == 'winrm'
+def dockerImage = ""
+if (params.MODE == 'Python-script') {
+    dockerImage = 'dockerhub-dev.techcombank.com.vn/laudio/pyodbc'
+} else {
+    dockerImage = 'ansible'
+}
 
-      - name: "Ensure set permissions of all script files (Windows)"
-        win_acl:
-          path: "{{ path_job }}\scripts"
-          rights:
-            - perm: 'full'
-              principal: 'Everyone'
-        when: ansible_connection == 'winrm'
+podTemplate(
+label: label,
+cloud: 'dso-workload',
+imagePullSecrets: ['nexus-dso-cred'],
+containers: [
+containerTemplate(
+name: 'worker-container',
+image: dockerImage,
+command: '',
+ttyEnabled: true
+)
+]
+) {
+node(label) {
+    container('worker-container') {
+        stage("Checkout SCM"){
+            cleanWs()
+            checkout scm
+        }
 
-      - name: "Push Windows log manager source script"
-        template:
-          src: templates/source_windows.j2
-          dest: "{{ path_job }}\source_windows.ps1"
-        when: ansible_connection == 'winrm'
+        stage('prepare') {
+            if (params.MODE.contains('ping')) {
+                echo "1" // Replace with actual script logic if needed
+            }
+            if (params.MODE.contains('Python-script')) {
+                sh 'python3 --version'
+                sh 'pip3 config set global.index-url https://nexus-dso.techcombank.com.vn/repository/pypi/simple'
+                sh 'pip3 install --user -U -i https://nexus-dso.techcombank.com.vn/repository/pypi/simple requests'
+                sh 'pip3 install --user -U -i https://nexus-dso.techcombank.com.vn/repository/pypi/simple pandas'
+                sh 'python3 ETL.py'
+            }
+            if (params.MODE.contains('Playbook')) {
+                echo "3" // Echo HelloWorld as per the mode
+            }
+         }
+
+    }
+}
+}
+
+def getInventoryFiles() {
+    def inventoryFiles = []
+    def files = new File("${env.WORKSPACE}/inventory").listFiles()
+    files.each { file ->
+        if (file.isFile()) {
+            inventoryFiles << file.getName()
+        }
+    }
+    return inventoryFiles.join('\n')
+}
