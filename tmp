@@ -1,25 +1,4 @@
-pipeline {
-    agent {
-        kubernetes {
-            label 'ansible-python-pod'
-            defaultContainer 'jnlp'
-            containers {
-                containerTemplate {
-                    name 'ansible'
-                    image 'ansible/ansible-runner'
-                    ttyEnabled true
-                    command 'cat'
-                }
-                containerTemplate {
-                    name 'python'
-                    image 'python:3.9'
-                    ttyEnabled true
-                    command 'cat'
-                }
-            }
-        }
-    }
-    environment {
+environment {
         // Define the dynamic path to the inventory folder within the workspace
         INVENTORY_PATH = "${env.WORKSPACE}/inventory"
     }
@@ -27,89 +6,15 @@ pipeline {
     // Define parameters upfront using properties(parameters)
     properties([
         parameters([
-            [
-                $class: 'ChoiceParameter',
-                choiceType: 'PT_SINGLE_SELECT',
-                name: 'ENVIRONMENT',
-                script: [
-                    $class: 'GroovyScript',
-                    script: [
-                        classpath: [],
-                        sandbox: true,
-                        script: '''
-                        return [
-                            "PROD - DC2",
-                            "PROD - DC1",
-                            "PROD - DR"
-                        ]
-                        '''
-                    ]
-                ]
-            ],
-            [
-                $class: 'ChoiceParameter',
-                choiceType: 'PT_SINGLE_SELECT',
+            choice(
                 name: 'INVENTORY_FILE',
-                script: [
-                    $class: 'GroovyScript',
-                    script: [
-                        classpath: [],
-                        sandbox: true,
-                        script: '''
-                        def inventoryFiles = []
-                        def files = new File("${env.WORKSPACE}/inventory").listFiles()
-                        files.each { file ->
-                            if (file.isFile()) {
-                                inventoryFiles.add(file.getName())
-                            }
-                        }
-                        return inventoryFiles
-                        '''
-                    ]
-                ]
-            ],
-            [
-                $class: 'ChoiceParameter',
-                choiceType: 'PT_SINGLE_SELECT',
+                choices: getInventoryFiles(),
+                description: 'Select inventory file'
+            ),
+            choice(
                 name: 'MODE',
-                script: [
-                    $class: 'GroovyScript',
-                    script: [
-                        classpath: [],
-                        sandbox: true,
-                        script: '''
-                        return [
-                            "Run Python Script",
-                            "Run Ansible Playbook",
-                            "Echo HelloWorld"
-                        ]
-                        '''
-                    ]
-                ]
-            ]
+                choices: ['Run Python Script', 'Run Ansible Playbook', 'Echo HelloWorld'],
+                description: 'Select the mode to run'
+            )
         ])
     ])
-
-    stages {
-        stage('Run Task Based on Mode') {
-            steps {
-                script {
-                    if (params.MODE == 'Run Python Script') {
-                        container('python') {
-                            echo "Running Python Script"
-                            sh 'python3 /path/to/your/python_script.py'
-                        }
-                    } else if (params.MODE == 'Run Ansible Playbook') {
-                        container('ansible') {
-                            echo "Running Ansible Playbook with inventory: ${params.INVENTORY_FILE}"
-                            // Use ansible-playbook inside the Ansible container
-                            sh "ansible-playbook /path/to/your/ansible/playbook.yml -i ${INVENTORY_PATH}/${params.INVENTORY_FILE}"
-                        }
-                    } else if (params.MODE == 'Echo HelloWorld') {
-                        echo "HelloWorld"
-                    }
-                }
-            }
-        }
-    }
-}
