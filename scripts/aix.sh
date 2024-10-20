@@ -60,3 +60,12 @@
     debug:
       msg: "{{ csv_file_content.content | b64decode }}"
     when: csv_file_content is defined
+
+
+    current_content=$(head -n -1 "$result_path")
+
+# Write back the current content without the last line
+printf "%s" "$current_content" > "$result_path"
+
+# Append the desired content to the file
+echo ",{{ leader_PIC }},{{ job_name }},{{ service.name }}" >> "$result_path"
