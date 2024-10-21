@@ -64,3 +64,15 @@
           Content-Type: "text/csv"
         force_basic_auth: yes
       when: successful_pings is defined or failed_pings is defined
+
+CREATE TABLE LogsData (
+    pre_size INT,
+    cleaned_size VARCHAR(50),
+    post_size INT NULL,
+    log_rotation_size VARCHAR(50) NULL,
+    log_rotation_first_time TEXT NULL,
+    log_rotation_last_time TEXT NULL,
+    pic VARCHAR(50),
+    job_name VARCHAR(50),
+    service VARCHAR(50)
+);
