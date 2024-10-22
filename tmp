@@ -76,3 +76,12 @@ CREATE TABLE LogsData (
     job_name VARCHAR(50),
     service VARCHAR(50)
 );
+
+
+def replace_nan_in_dict_values(data):
+    for key, value in data.items():
+        if isinstance(value, dict):  # Handle nested dictionaries
+            replace_nan_in_dict_values(value)
+        elif pd.isna(value):  # Check if the value is NaN
+            data[key] = None
+    return data
