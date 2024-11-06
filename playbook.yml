@@ -1,80 +1,65 @@
 ---
-- name: Create jobs for Linux and Windows hosts
-  hosts: all
-  become: yes
+- name: Check Telnet and curl connectivity for RedHat, AIX, and Windows hosts
+  hosts: all  # Run on all hosts in the inventory
+  gather_facts: yes  # Gather facts to identify the OS
+  vars:
+    target_host: "nexus-dso.techcombank.com.vn"  # Target for the checks
+    results: []  # Initialize an empty list to collect results
+
   tasks:
-    - name: "Create job on Linux hosts"
-      block:
-        - name: "Generate cron job script from template"
-          template:
-            src: linux_cron_job.j2
-            dest: "{{ path_job }}/{{ item.name }}_cron.sh"
-            mode: '0755'
-          loop: "{{ service }}"
-          when: ansible_connection == 'ssh'
+    - name: Check if the host is RedHat or AIX
+      debug:
+        msg: "Host {{ inventory_hostname }} is RedHat or AIX."
+      when: ansible_facts['os_family'] in ['RedHat', 'AIX']
 
-        - name: "Ensure cron job is present on Linux"
-          cron:
-            name: "{{ job_name }} for {{ item.name }}"
-            minute: "0"
-            hour: "0"  # Daily job at midnight
-            day: "*"
-            month: "*"
-            weekday: "*"
-            job: "{{ path_job }}/{{ item.name }}_cron.sh"
-          loop: "{{ service }}"
-          when: ansible_connection == 'ssh'
+    - name: Check if the host is Windows
+      debug:
+        msg: "Host {{ inventory_hostname }} is Windows."
+      when: ansible_facts['os_family'] == "Windows"
 
-        - name: "Create backup directories if needed"
-          file:
-            path: "{{ item.backup_path | default(item.path + '/backup') }}"
-            state: directory
-            mode: '0755'
-          loop: "{{ service }}"
-          when: ansible_connection == 'ssh' and item.backup
+    - name: Check Telnet connectivity (RedHat/AIX)
+      shell: "telnet {{ target_host }} 80 | head -n 1"
+      register: telnet_result
+      ignore_errors: yes
+      when: ansible_facts['os_family'] in ['RedHat', 'AIX']
 
-    - name: "Create job on Windows hosts"
-      block:
-        - name: "Generate PowerShell script for scheduled task from template"
-          template:
-            src: windows_scheduled_task.j2
-            dest: "{{ path_job }}\\{{ item.name }}_cleanup.ps1"
-          loop: "{{ service }}"
-          when: ansible_connection == 'winrm'
+    - name: Check curl connectivity (RedHat/AIX)
+      shell: "curl -I {{ target_host }} | head -n 1"
+      register: curl_result
+      ignore_errors: yes
+      when: ansible_facts['os_family'] in ['RedHat', 'AIX']
 
-        - name: "Ensure scheduled task is present on Windows"
-          win_scheduled_task:
-            name: "{{ job_name }}_{{ item.name }}"
-            description: "Cleanup job for {{ item.name }} service logs"
-            actions:
-              - path: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
-                arguments: "-File {{ path_job }}\\{{ item.name }}_cleanup.ps1"
-            trigger:
-              - schedule: daily
-                start_boundary: "00:00:00"  # Daily job at midnight
-            username: "SYSTEM"
-            state: present
-          loop: "{{ service }}"
-          when: ansible_connection == 'winrm'
+    - name: Check Telnet connectivity (Windows)
+      win_shell: "Test-NetConnection -ComputerName {{ target_host }} -Port 80"
+      register: telnet_result
+      ignore_errors: yes
+      when: ansible_facts['os_family'] == "Windows"
 
-        - name: "Create backup directories on Windows if needed"
-          win_file:
-            path: "{{ item.backup_path | default(item.path + '\\backup') }}"
-            state: directory
-          loop: "{{ service }}"
-          when: ansible_connection == 'winrm' and item.backup
+    - name: Check curl connectivity (Windows)
+      win_shell: "curl -I {{ target_host }}"
+      register: curl_result
+      ignore_errors: yes
+      when: ansible_facts['os_family'] == "Windows"
 
-        - name: "Schedule backup jobs on Windows"
-          win_scheduled_task:
-            name: "Backup_{{ job_name }}_{{ item.name }}"
-            description: "Backup job for {{ item.name }} service logs"
-            actions:
-              - path: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
-                arguments: "-Command 'Copy-Item -Path {{ item.path }}\\* -Destination {{ item.backup_path | default(item.path + '\\backup') }} -Recurse'"
-            trigger:
-              - schedule: daily
-                start_boundary: "00:00:00"  # Daily backup at midnight
-            username: "SYSTEM"
-            state: present
-          loop: "{{ service }}"
-          when: ansible_connection == 'winrm' and item.backup
+    - name: Set telnet status
+      set_fact:
+        telnet_status: "{{ 'Success' if telnet_result.rc == 0 else 'Fail' }}"
+
+    - name: Set curl status
+      set_fact:
+        curl_status: "{{ 'Success' if curl_result.rc == 0 else 'Fail' }}"
+
+    - name: Collect result for each host
+      set_fact:
+        results: "{{ results + [{'host': inventory_hostname, 'os': ansible_facts['os_family'], 'telnet_status': telnet_status, 'curl_status': curl_status }] }}"
+
+    - name: Display all results in one task (print to screen)
+      debug:
+        msg: "{{ results | map(attribute='host') | map('join', ', ') | join(' | ') }}"
+      when: inventory_hostname == groups['all'][0]  # Only run on one host to print all results at once
+
+    - name: Save results to a file (optional)
+      copy:
+        content: "{{ results | to_yaml }}"
+        dest: "/tmp/results_{{ lookup('pipe', 'date +%Y%m%d') }}.yaml"
+      when: inventory_hostname == groups['all'][0]  # Save only from one host, after all have finished
