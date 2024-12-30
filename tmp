@@ -1,87 +1,17 @@
----
-- name: Check ping connectivity for Windows, RHEL, and AIX hosts
-  hosts: all
-  gather_facts: no
-  vars:
-    csv_file_path: "/tmp/ping_result_{{ lookup('pipe', 'date +%Y%m%d') }}.csv"
-    nexus_url: "http://nexus.example.com/repository/your-repo/"
-    nexus_username: "your_username"
-    nexus_password: "your_password"
-  tasks:
-    - name: Ping Windows hosts
-      win_ping:
-      when: ansible_connection == "winrm"
-      register: win_ping_result
+[[inputs.tail]]
+  ## Files to monitor. Glob patterns supported.
+  files = ["/path/to/your/logfile.log"]
 
-    - name: Ping Linux (RHEL/AIX) hosts
-      ping:
-      when: ansible_connection == "ssh"
-      register: linux_ping_result
+  ## Parse each log line with regex to extract JSON
+  data_format = "grok"
+  grok_patterns = ["%{TIMESTAMP_ISO8601:log_timestamp} %{WORD:source} %{GREEDYDATA:json_data}"]
 
-    - name: Add successful Windows ping results to list
-      set_fact:
-        successful_pings: "{{ successful_pings | default([]) + [ansible_host] }}"
-      when: win_ping_result.ping == "pong"
+  ## Extract the JSON part of the log
+  [inputs.tail.tags]
+    source = "{{source}}"  # Add the source (e.g., IPDMONITORING) as a tag
 
-    - name: Add failed Windows ping results to list
-      set_fact:
-        failed_pings: "{{ failed_pings | default([]) + [ansible_host] }}"
-      when: win_ping_result.ping != "pong"
-
-    - name: Add successful Linux ping results to list
-      set_fact:
-        successful_pings: "{{ successful_pings | default([]) + [ansible_host] }}"
-      when: linux_ping_result.ping == "pong"
-
-    - name: Add failed Linux ping results to list
-      set_fact:
-        failed_pings: "{{ failed_pings | default([]) + [ansible_host] }}"
-      when: linux_ping_result.ping != "pong"
-
-    - name: Ensure /tmp/ directory exists for the CSV file
-      file:
-        path: /tmp/
-        state: directory
-
-    - name: Generate CSV file with ping results
-      copy:
-        dest: "{{ csv_file_path }}"
-        content: |
-          IP, Status
-          {% for ip in successful_pings %}{{ ip }}, Success
-          {% endfor %}
-          {% for ip in failed_pings %}{{ ip }}, Fail
-          {% endfor %}
-
-    - name: Upload CSV file to Nexus
-      uri:
-        url: "{{ nexus_url }}ping_result_{{ lookup('pipe', 'date +%Y%m%d') }}.csv"
-        method: PUT
-        user: "{{ nexus_username }}"
-        password: "{{ nexus_password }}"
-        src: "{{ csv_file_path }}"
-        headers:
-          Content-Type: "text/csv"
-        force_basic_auth: yes
-      when: successful_pings is defined or failed_pings is defined
-
-CREATE TABLE LogsData (
-    pre_size INT,
-    cleaned_size VARCHAR(50),
-    post_size INT NULL,
-    log_rotation_size VARCHAR(50) NULL,
-    log_rotation_first_time TEXT NULL,
-    log_rotation_last_time TEXT NULL,
-    pic VARCHAR(50),
-    job_name VARCHAR(50),
-    service VARCHAR(50)
-);
-
-
-def replace_nan_in_dict_values(data):
-    for key, value in data.items():
-        if isinstance(value, dict):  # Handle nested dictionaries
-            replace_nan_in_dict_values(value)
-        elif pd.isna(value):  # Check if the value is NaN
-            data[key] = None
-    return data
+[[processors.parser]]
+  ## Parse the extracted JSON
+  namepass = ["tail"]  # Apply only to the `tail` input
+  data_format = "json"
+  field = "json_data"
