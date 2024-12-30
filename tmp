@@ -2,27 +2,22 @@
   ## Files to monitor. Glob patterns supported.
   files = ["/path/to/your/logfile.log"]
 
-  ## Parse each log line using a Grok pattern to extract JSON
-  data_format = "grok"
-  grok_patterns = ["%{TIMESTAMP_ISO8601:log_prefix} %{WORD:source} %{GREEDYDATA:json_data}"]
+  ## Parse each log line using a regex to extract only the JSON part
+  data_format = "regex"
+  regex = ".*?\\{.*\\}"  # Matches the JSON part of the log line
+  regex_fields = ["json_data"]
 
-  ## Tags (optional)
+  ## Add the fixed tag
   [inputs.tail.tags]
-    source = "{{source}}"  # Add the source (e.g., IPDMONITORING) as a tag
+    module_name = "IPDMONITORING"  # Fixed tag value
 
 [[processors.parser]]
-  ## Parse the extracted JSON from the `json_data` field
-  namepass = ["tail"]        # Apply only to logs from the `tail` input
+  ## Parse the JSON content
+  namepass = ["tail"]
   data_format = "json"
-  field = "json_data"        # Extracted JSON content
-  json_time_key = "timestamp"       # Use the "timestamp" field from the JSON
+  field = "json_data"
+  json_time_key = "timestamp"       # Use the "timestamp" field in the JSON
   json_time_format = "unix"         # Interpret as Unix time (seconds)
-
-[[processors.converter]]
-  ## Convert specific fields from string to float
-  [[processors.converter.fields]]
-    namepass = ["_max", "_mean", "_min", "_99thPercentile", "_value", "_count"]
-    dest = "float"
 
 [[outputs.influxdb_v2]]
   urls = ["http://localhost:8086"]
