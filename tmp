@@ -1,26 +1,29 @@
 [[inputs.tail]]
-  ## Files to monitor. Glob patterns supported.
-  files = ["/path/to/your/logfile.log"]
+  # The path to the log file you want to tail
+  files = ["/var/atlassian/application-data/jira/log/atlassian-jira-ipd-monitoring.log"]
 
-  ## Parse each log line using a regex to extract only the JSON part
-  data_format = "regex"
-  regex = ".*?\\{.*\\}"  # Matches the JSON part of the log line
-  regex_fields = ["json_data"]
+  # Read from the beginning of the file
+  from_beginning = true
 
-  ## Add the fixed tag
-  [inputs.tail.tags]
-    module_name = "IPDMONITORING"  # Fixed tag value
+  # Use the grok parser to parse the log lines
+  data_format = "grok"
+  
+  # Grok patterns to extract the components of the log line
+  grok_patterns = ["%{TIMESTAMP_ISO8601:timestamp} %{WORD:source} %{GREEDYDATA:json_data}"]
 
-[[processors.parser]]
-  ## Parse the JSON content
-  namepass = ["tail"]
-  data_format = "json"
-  field = "json_data"
-  json_time_key = "timestamp"       # Use the "timestamp" field in the JSON
-  json_time_format = "unix"         # Interpret as Unix time (seconds)
+  # Define how to parse the extracted JSON data
+  [[inputs.tail.grok]]
+    # Specify the name of the field that contains the JSON data
+    json_string = "json_data"
+    json_time_key = "timestamp"
+    json_time_format = "unix" # Adjust if necessary based on your timestamp format
 
-[[outputs.influxdb_v2]]
-  urls = ["http://localhost:8086"]
-  token = "your-influxdb-token"
-  organization = "your-org"
-  bucket = "your-bucket"
+    # Extracting the attributes into fields
+    [[inputs.tail.json]]
+      [[inputs.tail.json.field]]
+        key = "label"
+        name = "label"
+
+      [[inputs.tail.json.field]]
+        key = "attributes._value"
+        name = "value"
